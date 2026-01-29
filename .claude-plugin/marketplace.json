@@ -1,0 +1,14 @@
+{
+  "name": "hytale-modding-marketplace",
+  "owner": {
+    "name": "zach"
+  },
+  "plugins": [
+    {
+      "name": "hytale-modding",
+      "source": ".",
+      "description": "Hytale server plugin and modding development - Java plugins, commands, events, Custom UI, asset packs, items, weapons, and animations",
+      "version": "1.0.0"
+    }
+  ]
+}

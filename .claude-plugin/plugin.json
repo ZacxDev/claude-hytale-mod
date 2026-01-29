@@ -1,0 +1,21 @@
+{
+  "name": "hytale-modding",
+  "description": "Hytale server plugin development skill with Java patterns, Custom UI, asset packs, weapons, and animations",
+  "version": "1.0.0",
+  "author": {
+    "name": "zach"
+  },
+  "license": "MIT",
+  "keywords": [
+    "hytale",
+    "modding",
+    "java",
+    "game-dev",
+    "plugins",
+    "hypixel"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/zach/claude-hytale-mod"
+  }
+}
