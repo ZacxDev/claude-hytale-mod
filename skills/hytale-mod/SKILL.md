@@ -129,7 +129,26 @@ file texture.png  # Should show "8-bit/color RGBA"
 ### Asset Pack Paths
 - Item definitions: `Server/Item/Items/` (NOT `Common/Assets/Items/`)
 - Item icons: `Common/Icons/ItemsGenerated/`
+- Item models: `Common/Items/ItemName/ItemName.blockymodel`
+- Item textures: `Common/Items/ItemName/ItemName_Texture.png`
 - UI files: `Common/UI/Custom/`
+- **Mods folder**: `server/Server/mods/` (NOT `server/mods/`)
+
+### Custom Items (CRITICAL)
+**Items REQUIRE an `Id` field** matching the filename:
+```json
+{
+  "Id": "My_Item",
+  "TranslationProperties": { "Name": "My Item" },
+  "Icon": "Icons/ItemsGenerated/My_Item.png",
+  "Model": "Items/My_Item/My_Item.blockymodel",
+  "Texture": "Items/My_Item/My_Item_Texture.png"
+}
+```
+- Even though server logs warn "Unused key(s): Id", items without `Id` are **silently ignored**
+- Model/Texture paths must reference bundled assets — you **cannot** use vanilla asset paths
+- Items are namespaced: `/spawnitem pluginname:ItemId`
+- Commands are namespaced: `/pluginname:commandname`
 
 ## Command Pattern
 
@@ -285,6 +304,22 @@ Group {
 
 ## Item Definition (bundled in plugin)
 
+### Complete Working Example
+
+**Directory structure:**
+```
+my-plugin/src/main/resources/
+├── manifest.json
+├── Server/Item/Items/
+│   └── My_Item.json
+└── Common/
+    ├── Icons/ItemsGenerated/
+    │   └── My_Item.png            # 64x64, 8-bit RGBA PNG
+    └── Items/My_Item/
+        ├── My_Item.blockymodel
+        └── My_Item_Texture.png    # 8-bit RGBA PNG
+```
+
 **manifest.json:**
 ```json
 {
@@ -303,17 +338,23 @@ Group {
 **Server/Item/Items/My_Item.json:**
 ```json
 {
-  "Id": "My_Item",
   "TranslationProperties": {
     "Name": "My Custom Item",
     "Description": "A custom item from my plugin"
   },
+  "Id": "My_Item",
   "Icon": "Icons/ItemsGenerated/My_Item.png",
+  "Model": "Items/My_Item/My_Item.blockymodel",
+  "Texture": "Items/My_Item/My_Item_Texture.png",
   "Quality": "Common",
   "MaxStack": 64,
   "Categories": ["Items.Example"]
 }
 ```
+
+**CRITICAL**: The `Id` field MUST be present and match the filename. Items without `Id` are silently ignored.
+
+**Spawn the item:** `/spawnitem myplugin:My_Item`
 
 ## Weapon Definition
 
@@ -342,11 +383,18 @@ Key weapon properties:
 # Build plugin JAR
 gradle -p plugin-name shadowJar
 
-# Copy to server mods folder
+# Copy to server mods folder (IMPORTANT: server/Server/mods/, NOT server/mods/)
 cp plugin-name/build/libs/*.jar server/Server/mods/
 
 # Start server
 ./server/start.sh
+
+# Verify plugin loaded (check server logs for):
+# [PluginManager] - com.example:PluginName from path PluginName-1.0.0.jar
+# [PluginName|P] Plugin loaded!
+
+# Verify item registered (check logs for warning, which means it's working):
+# [AssetStore|Item] Unused key(s) in 'My_Item' file /Server/Item/Items/My_Item.json: Id
 ```
 
 ## Context7 Library IDs
@@ -381,6 +429,57 @@ For fetching up-to-date documentation:
 | `dataDirectory` | `getDataDirectory()` | Persistent storage path |
 | `assetRegistry` | `getAssetRegistry()` | Game assets |
 
+## Decompiled Source Reference
+
+This skill includes documentation extracted from the decompiled HytaleServer.jar (5,237 Java files, 894 packages).
+
+### Reference Files
+
+| File | Description |
+|------|-------------|
+| [reference/guides.md](reference/guides.md) | Community patterns (commands, ECS, UI, inventory) |
+| [reference/events.md](reference/events.md) | Complete events list with registration patterns |
+| [reference/packets.md](reference/packets.md) | Client-to-server packet reference |
+| [reference/decompiled.md](reference/decompiled.md) | Navigation guide for decompiled source |
+| [reference/PACKAGES.md](reference/PACKAGES.md) | Key packages for plugin development |
+| [reference/API_REFERENCE.md](reference/API_REFERENCE.md) | Core plugin APIs |
+
+### Quick Hierarchy Reference
+
+**Plugins**: `PluginBase` → `JavaPlugin` → Your plugin
+
+**Commands**:
+- `AbstractCommand` → Basic commands
+- `AbstractAsyncCommand` → Async commands
+- `AbstractPlayerCommand` → Player-only commands
+- `AbstractCommandCollection` → Subcommand groups
+
+**UI Pages**:
+- `CustomUIPage` → Base page
+- `BasicCustomUIPage` → Read-only pages
+- `InteractiveCustomUIPage<T>` → Pages with input
+
+**Interactions**:
+- `Interaction` → Base class
+- `SimpleInstantInteraction` → One-shot actions
+- `ChargingInteraction` → Hold to charge
+- `ChainingInteraction` → Combo chains
+
+### Built-in Plugin Examples
+
+The decompiled source contains ~57 built-in plugins showing Hypixel's implementation patterns:
+
+| Plugin | Purpose |
+|--------|---------|
+| `CraftingPlugin` | Recipe and crafting system |
+| `WeatherPlugin` | Weather effects |
+| `PortalsPlugin` | Portal mechanics |
+| `ShopPlugin` | NPC shops |
+| `ObjectivePlugin` | Quest objectives |
+| `FarmingPlugin` | Farming mechanics |
+
 ## Reference
 
 For extended patterns (ECS, animations, packet handling, interactions), see [patterns.md](patterns.md).
+
+For decompiled source navigation, see [reference/decompiled.md](reference/decompiled.md).

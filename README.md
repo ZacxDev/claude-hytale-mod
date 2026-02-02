@@ -8,6 +8,7 @@ A Claude Code skill providing prime context for Hytale server plugin development
 - **Custom UI system** — InteractiveCustomUIPage, .ui file format, BuilderCodec
 - **Asset packs** — Items, weapons, textures, bundled in plugins
 - **Critical gotchas** — Flogger logging, event registration, PNG format requirements
+- **Decompiled source reference** — Class hierarchies, package index, API documentation
 - **Context7 integration** — Library IDs for fetching up-to-date docs
 
 ## Installation
@@ -53,6 +54,18 @@ After installation, the skill activates automatically when working on Hytale mod
 - ECS components
 - Animation utilities
 - .blockyanim format
+
+### reference/ (Comprehensive Documentation)
+Documentation from hytalemodding.dev community and decompiled HytaleServer.jar:
+
+| File | Description |
+|------|-------------|
+| `guides.md` | Community patterns (commands, ECS, UI, inventory, spawning) |
+| `events.md` | Complete events list with registration patterns |
+| `packets.md` | Client-to-server packet reference with IDs |
+| `decompiled.md` | Navigation guide for exploring decompiled source |
+| `PACKAGES.md` | Key packages for plugin development |
+| `API_REFERENCE.md` | Core plugin APIs with class/interface details |
 
 ## Hytale Modding Resources
 

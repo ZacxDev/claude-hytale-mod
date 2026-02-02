@@ -1,0 +1,590 @@
+# Community Guides Reference
+
+Comprehensive patterns from hytalemodding.dev community documentation.
+
+## Command Types
+
+### AbstractAsyncCommand
+Runs on background thread - cannot edit Stores/Refs without getting world first.
+
+```java
+public class ServerRulesCommand extends AbstractAsyncCommand {
+    public ServerRulesCommand() {
+        super("rules", "Lists the servers rules");
+    }
+
+    @Override
+    protected CompletableFuture<Void> executeAsync(@Nonnull CommandContext context) {
+        context.sendMessage(Message.raw("The only rule is there are no rules."));
+        return CompletableFuture.completedFuture(null);
+    }
+}
+```
+
+### AbstractPlayerCommand
+Tied to player and world - runs on world thread, can safely access Store and Refs.
+
+```java
+public class ExampleCommand extends AbstractPlayerCommand {
+    public ExampleCommand() {
+        super("test", "Super test command!");
+    }
+
+    @Override
+    protected void execute(@Nonnull CommandContext ctx, @Nonnull Store<EntityStore> store,
+                          @Nonnull Ref<EntityStore> ref, @Nonnull PlayerRef playerRef,
+                          @Nonnull World world) {
+        Player player = store.getComponent(ref, Player.getComponentType());
+        UUIDComponent component = store.getComponent(ref, UUIDComponent.getComponentType());
+        TransformComponent transform = store.getComponent(ref, TransformComponent.getComponentType());
+        player.sendMessage(Message.raw("Transform: " + transform.getPosition()));
+    }
+}
+```
+
+### AbstractTargetPlayerCommand
+Like AbstractPlayerCommand but adds `--player <name>` argument.
+
+### AbstractTargetEntityCommand
+Uses raycast to target entity player is looking at.
+
+```java
+@Override
+protected void execute(CommandContext context, Store<EntityStore> store,
+                       Ref<EntityStore> ref, World world) {
+    EntityStatMap stats = store.getComponent(ref, EntityStatMap.getComponentType());
+    if (stats == null) {
+        context.sendMessage(Message.raw("This entity has no stats!"));
+        return;
+    }
+    int healthIdx = DefaultEntityStatTypes.getHealth();
+    stats.addValue(healthIdx, 100);
+}
+```
+
+## Command Arguments
+
+| Type | Method | Usage |
+|------|--------|-------|
+| Required | `withRequiredArg` | Parsed left-to-right, no flag needed |
+| Optional | `withOptionalArg` | Requires `--key value` syntax |
+| Default | `withDefaultArg` | Returns default if not provided |
+| Flag | `withFlagArg` | Boolean switch (`--debug`) |
+
+### ArgTypes Available
+- `ArgTypes.STRING`, `ArgTypes.INTEGER`, `ArgTypes.BOOLEAN`
+- `ArgTypes.FLOAT`, `ArgTypes.DOUBLE`, `ArgTypes.UUID`
+- `ArgTypes.PLAYER_REF` (for targeting players)
+
+### Full Example
+```java
+public class HealPlayerCommand extends AbstractTargetPlayerCommand {
+    private final DefaultArg<Float> healthArg;
+    private final OptionalArg<String> messageArg;
+    private final FlagArg debugArg;
+
+    public HealPlayerCommand() {
+        super("healplayer", "Heal a player");
+        this.healthArg = withDefaultArg("health", "Amount", ArgTypes.FLOAT, 100f, "Default: 100");
+        this.messageArg = withOptionalArg("message", "Message", ArgTypes.STRING);
+        this.debugArg = withFlagArg("debug", "Debug mode");
+    }
+
+    @Override
+    protected void execute(CommandContext ctx, Ref<EntityStore> targetRef,
+                          Ref<EntityStore> senderRef, PlayerRef playerRef,
+                          World world, Store<EntityStore> store) {
+        float health = healthArg.get(ctx);  // Get value via context
+        String msg = messageArg.get(ctx);   // May be null
+        boolean debug = debugArg.get(ctx);  // true or false
+
+        EntityStatMap stats = store.getComponent(targetRef, EntityStatMap.getComponentType());
+        stats.addStatValue(DefaultEntityStatTypes.getHealth(), health);
+    }
+}
+```
+
+### Argument Validators
+```java
+OptionalArg<Integer> amount = withOptionalArg("amount", "Amount", ArgTypes.INTEGER)
+    .addValidator(Validators.greaterThan(0))
+    .addValidator(Validators.lessThan(1000));
+
+// Custom validator
+OptionalArg<Integer> amount = withOptionalArg("amount", "Amount", ArgTypes.INTEGER)
+    .addValidator(value -> {
+        if (value != null && value <= 0) {
+            return ValidationResult.error("must be positive");
+        }
+        return ValidationResult.success();
+    });
+```
+
+## Command Permissions
+```java
+public HealPlayerCommand() {
+    super("healplayer", "Heal a player");
+    requirePermission(HytalePermissions.fromCommand("rules"));
+    requirePermission(
+        PermissionRules.or(
+            HytalePermissions.fromCommand("moderator"),
+            HytalePermissions.fromCommand("admin")
+        )
+    );
+}
+```
+
+## Command Variants & Aliases
+```java
+public class GiveCommand extends AbstractPlayerCommand {
+    public GiveCommand() {
+        super("give", "Give item to yourself");
+        addUsageVariant(new GiveOtherCommand());
+        addAliases("gv", "gMe");
+    }
+}
+
+// Variant - no command name in super()
+public class GiveOtherCommand extends AbstractAsyncCommand {
+    public GiveOtherCommand() {
+        super("Give item to another player");  // Description only
+        this.playerArg = withRequiredArg("player", "Target", ArgTypes.PLAYER_REF);
+    }
+}
+```
+
+## Subcommands (AbstractCommandCollection)
+```java
+public class AdminCommand extends AbstractCommandCollection {
+    public AdminCommand() {
+        super("admin", "Admin commands");
+        addSubCommand(new UserCommandCollection());
+        addSubCommand(new ServerCommandCollection());
+    }
+}
+// Results in: /admin user rules, /admin server restart
+```
+
+## ECS Core Concepts
+
+### Store
+Core of ECS - stores entities using Archetypes (grouped data chunks).
+
+### EntityStore
+Implements WorldProvider - accesses specific Hytale World. Has `entitiesByUuid` and `networkIdToRef` maps.
+
+### ChunkStore
+Stores block-related components. Contains WorldChunk, EntityChunk, BlockChunk, BlockSection.
+
+### Holder
+Blueprint for entity before it exists in Store. Like a shopping cart - collect components, then "checkout" to get Ref.
+
+### Ref (Reference)
+Safe handle/pointer to entity. Never store direct entity references. Call `validate()` to check if entity still alive.
+
+### PlayerRef vs Player
+- **PlayerRef**: Component for connection/identity. Stays active across world switches.
+- **Player**: Component for physical presence. Only exists when spawned in world.
+
+## Creating Custom Components
+
+```java
+public class PoisonComponent implements Component<EntityStore> {
+    private float damagePerTick;
+    private float tickInterval;
+    private int remainingTicks;
+
+    public PoisonComponent() {
+        this(5f, 1.0f, 10);
+    }
+
+    public PoisonComponent(float damage, float interval, int ticks) {
+        this.damagePerTick = damage;
+        this.tickInterval = interval;
+        this.remainingTicks = ticks;
+    }
+
+    // Copy constructor required
+    public PoisonComponent(PoisonComponent other) {
+        this.damagePerTick = other.damagePerTick;
+        this.tickInterval = other.tickInterval;
+        this.remainingTicks = other.remainingTicks;
+    }
+
+    @Nullable
+    @Override
+    public Component<EntityStore> clone() {
+        return new PoisonComponent(this);
+    }
+
+    // Getters and setters...
+}
+```
+
+## BuilderCodec for Components
+
+```java
+public static final BuilderCodec<PoisonComponent> CODEC = BuilderCodec.builder(
+        PoisonComponent.class, PoisonComponent::new)
+    .append(
+        new KeyedCodec<Float>("DamagePerTick", Codec.FLOAT),
+        (data, value) -> data.damagePerTick = value,
+        (data) -> data.damagePerTick
+    )
+    .add()
+    .append(
+        new KeyedCodec<String>("PoisonName", Codec.STRING),
+        (data, value) -> data.poisonName = value,
+        (data) -> data.poisonName
+    )
+    .addValidator(Validators.nonNull())
+    .add()
+    .build();
+```
+
+**Important**: KeyedCodec identifiers must start uppercase and be unique across entire mod.
+
+### Available Codecs
+```
+Codec.STRING, Codec.BOOLEAN, Codec.DOUBLE, Codec.FLOAT
+Codec.BYTE, Codec.SHORT, Codec.INTEGER, Codec.LONG
+Codec.DOUBLE_ARRAY, Codec.FLOAT_ARRAY, Codec.INT_ARRAY
+Codec.LONG_ARRAY, Codec.STRING_ARRAY, Codec.PATH
+Codec.INSTANT, Codec.DURATION, Codec.UUID_BINARY, Codec.UUID_STRING
+```
+
+### Map Codec
+```java
+var mapCodec = new KeyedCodec<>("DamageMap",
+    new MapCodec<>(Codec.FLOAT, HashMap<String, Float>::new));
+```
+
+## CommandBuffer
+Queue changes to entities for thread safety:
+
+```java
+commandBuffer.addComponent(ref, componentType, new MyComponent());
+commandBuffer.removeComponent(ref, componentType);
+MyComponent comp = commandBuffer.getComponent(ref, componentType);
+```
+
+## Player Stats
+
+### Available Stats (DefaultEntityStatTypes)
+- `getHealth()`, `getStamina()`, `getMana()`
+- `getOxygen()`, `getSignatureEnergy()`, `getAmmo()`
+
+### Modifying Stats
+```java
+world.execute(() -> {
+    EntityStatMap statMap = store.getComponent(playerRef, EntityStatMap.getComponentType());
+    if (statMap != null) {
+        statMap.maximizeStatValue(DefaultEntityStatTypes.getHealth());
+        statMap.addStatValue(DefaultEntityStatTypes.getStamina(), 50);
+        statMap.subtractStatValue(DefaultEntityStatTypes.getHealth(), 10);
+        statMap.setStatValue(DefaultEntityStatTypes.getMana(), 100);
+        statMap.resetStatValue(DefaultEntityStatTypes.getOxygen());
+    }
+});
+```
+
+## Teleporting Players
+
+```java
+public static void teleportPlayer(Player player, int x, int y, int z) {
+    World world = player.getWorld();
+    if (world == null) return;
+
+    world.execute(() -> {
+        if (player.getReference() == null) return;
+        Store<EntityStore> store = player.getReference().getStore();
+        Teleport teleport = Teleport.createForPlayer(world,
+            new Vector3d(x, y, z),    // Target position
+            new Vector3f(0, 0, 0)     // Target rotation
+        );
+        store.addComponent(player.getReference(), Teleport.getComponentType(), teleport);
+    });
+}
+```
+
+## Spawning Entities
+
+```java
+World world = player.getWorld();
+Store<EntityStore> store = world.getEntityStore().getStore();
+
+world.execute(() -> {
+    // Create blank holder
+    Holder<EntityStore> holder = EntityStore.REGISTRY.newHolder();
+
+    // Get model
+    ModelAsset modelAsset = ModelAsset.getAssetMap().getAsset("Minecart");
+    Model model = Model.createScaledModel(modelAsset, 1.0f);
+
+    // Add components
+    Vector3d position = new Vector3d(0, 100, 0);
+    holder.addComponent(TransformComponent.getComponentType(),
+        new TransformComponent(position, new Vector3f(0, 0, 0)));
+    holder.addComponent(PersistentModel.getComponentType(),
+        new PersistentModel(model.toReference()));
+    holder.addComponent(ModelComponent.getComponentType(),
+        new ModelComponent(model));
+    holder.addComponent(BoundingBox.getComponentType(),
+        new BoundingBox(model.getBoundingBox()));
+    holder.addComponent(NetworkId.getComponentType(),
+        new NetworkId(store.getExternalData().takeNextNetworkId()));
+    holder.addComponent(Interactions.getComponentType(), new Interactions());
+
+    // Ensure required components
+    holder.ensureComponent(UUIDComponent.getComponentType());
+    holder.ensureComponent(Interactable.getComponentType());
+
+    // Spawn
+    store.addEntity(holder, AddReason.SPAWN);
+});
+```
+
+## Inventory Management
+
+### Accessing Inventory
+```java
+Inventory inventory = player.getInventory();
+```
+
+### ItemContainer Methods
+- `.getStorage()`, `.getArmor()`, `.getBackpack()`
+- `.getHotbar()`, `.getUtility()`
+- `.getCombinedEverything()`, `.getCombinedHotbarFirst()`
+
+### Creating ItemStack
+```java
+ItemStack item = new ItemStack("Stone");
+ItemStack withQty = new ItemStack("Stone", 64);
+
+// With metadata
+BsonDocument metadata = new BsonDocument();
+metadata.append("customData", new BsonString("value"));
+ItemStack itemMeta = new ItemStack("Stone", 64, metadata);
+
+// With durability
+ItemStack weapon = new ItemStack("DiamondSword", 1, 100.0, 100.0, metadata);
+```
+
+### Add/Remove Items
+```java
+ItemContainer storage = inventory.getStorage();
+storage.addItemStack(item);
+storage.addItemStackToSlot((short) 4, item);
+storage.removeItemStack(item);
+storage.removeItemStackFromSlot((short) 4);
+```
+
+### Opening Pages
+```java
+PageManager pageManager = player.getPageManager();
+Store<EntityStore> store = player.getWorld().getEntityStore().getStore();
+pageManager.setPage(player.getReference(), store, Page.Inventory);
+// Available: Page.None, Page.Bench, Page.Inventory, Page.Map, Page.Custom
+```
+
+## Playing Sounds
+
+```java
+int index = SoundEvent.getAssetMap().getIndex("SFX_Cactus_Large_Hit");
+World world = player.getWorld();
+EntityStore entityStore = world.getEntityStore();
+Ref<EntityStore> playerRef = player.getReference();
+
+world.execute(() -> {
+    TransformComponent transform = entityStore.getStore().getComponent(
+        playerRef, EntityModule.get().getTransformComponentType());
+    SoundUtil.playSoundEvent3dToPlayer(
+        playerRef, index, SoundCategory.UI, transform.getPosition(), entityStore.getStore());
+});
+```
+
+### SoundCategory
+`Music`, `Ambient`, `SFX`, `UI`
+
+## Custom UI
+
+### File Location
+`.ui` files must be in `resources/Common/UI/Custom/`
+
+### CustomUIHud
+```java
+public class MyHud extends CustomUIHud {
+    @Override
+    public void build(UICommandBuilder ui) {
+        ui.append("MyHud.ui");
+    }
+}
+
+// Show HUD
+player.getHudManager().setCustomHud(new MyHud());
+player.getHudManager().hideHudComponents();  // Hide default Hytale UI
+```
+
+### InteractiveCustomUIPage
+```java
+public class MyPage extends InteractiveCustomUIPage<MyPage.Data> {
+    public MyPage(PlayerRef playerRef) {
+        super(playerRef, CustomPageLifetime.CanDismiss, Data.CODEC);
+    }
+
+    @Override
+    public void build(Ref<EntityStore> ref, UICommandBuilder ui,
+                      UIEventBuilder events, Store<EntityStore> store) {
+        ui.append("MyPage.ui");
+        events.addEventBinding(
+            CustomUIEventBindingType.ValueChanged,
+            "#MyInput",
+            EventData.of("@MyInput", "#MyInput.Value"),
+            false
+        );
+    }
+
+    @Override
+    public void handleDataEvent(Ref<EntityStore> ref, Store<EntityStore> store, Data data) {
+        super.handleDataEvent(ref, store, data);
+        System.out.println("Input: " + data.value);
+        sendUpdate();  // REQUIRED - client shows "Loading..." without this
+    }
+
+    public static class Data {
+        public static final BuilderCodec<Data> CODEC = BuilderCodec.builder(Data.class, Data::new)
+            .append(new KeyedCodec<>("@MyInput", Codec.STRING),
+                (d, v) -> d.value = v, d -> d.value)
+            .add()
+            .build();
+        private String value;
+    }
+}
+
+// Open page
+player.getPageManager().openCustomPage(ref, store, new MyPage(playerRef));
+// Close page
+player.getPageManager().setPage(ref, store, Page.None);
+```
+
+### Dynamic UI Updates
+```java
+public void updateText(String newText) {
+    UICommandBuilder ui = new UICommandBuilder();
+    ui.set("#MyLabel.TextSpans", Message.raw(newText));
+    update(false, ui);  // false = don't clear existing UI
+}
+```
+
+## Item Interactions
+
+### SimpleInstantInteraction
+```java
+public class MyInteraction extends SimpleInstantInteraction {
+    public static final BuilderCodec<MyInteraction> CODEC = BuilderCodec.builder(
+        MyInteraction.class, MyInteraction::new, SimpleInstantInteraction.CODEC
+    ).build();
+
+    @Override
+    protected void firstRun(InteractionType type, InteractionContext ctx,
+                           CooldownHandler cooldown) {
+        CommandBuffer<EntityStore> buffer = ctx.getCommandBuffer();
+        Player player = buffer.getComponent(ctx.getEntity(), Player.getComponentType());
+        ItemStack item = ctx.getHeldItem();
+        player.sendMessage(Message.raw("Used: " + item.getItemId()));
+    }
+}
+
+// Register in setup()
+getCodecRegistry(Interaction.CODEC).register("my_interaction", MyInteraction.class, MyInteraction.CODEC);
+```
+
+### Item JSON with Interaction
+```json
+{
+  "Id": "My_Item",
+  "Interactions": {
+    "Secondary": {
+      "Interactions": [
+        { "Type": "my_interaction" }
+      ]
+    }
+  }
+}
+```
+
+### Advanced Interaction Types
+
+**Condition**: Check before proceeding
+```json
+{
+  "Type": "Condition",
+  "Crouching": true,
+  "Failed": "Block_Secondary",
+  "Next": { ... }
+}
+```
+
+**Charging**: Hold to charge
+```json
+{
+  "Type": "Charging",
+  "FailsOnDamage": true,
+  "HorizontalSpeedMultiplier": 0.4,
+  "Next": {
+    "2.5": { "Type": "my_interaction" }
+  },
+  "Failed": { "Type": "Simple" }
+}
+```
+
+**Serial**: Execute in sequence
+```json
+{
+  "Type": "Serial",
+  "Interactions": [ {...}, {...} ]
+}
+```
+
+## Item Recipes
+
+```json
+{
+  "Id": "My_Item",
+  "Recipe": {
+    "TimeSeconds": 3.5,
+    "Input": [
+      { "ItemId": "Ingredient_1", "Quantity": 15 },
+      { "ItemId": "Ingredient_2", "Quantity": 15 }
+    ],
+    "BenchRequirement": [
+      {
+        "Id": "Workbench",
+        "Type": "Crafting",
+        "Categories": ["Workbench_Survival"]
+      }
+    ]
+  }
+}
+```
+
+## World Thread Safety
+
+**Critical**: Many operations must run on world thread via `world.execute()`:
+- Modifying Store/Refs
+- Spawning entities
+- Playing sounds at positions
+- Teleporting players
+
+```java
+world.execute(() -> {
+    // Thread-safe operations here
+});
+```
+
+## Useful Resources
+
+- Visual UI Editor: https://hytale.ellie.au/
+- IntelliJ UI Plugin: https://plugins.jetbrains.com/plugin/29783-hytale-ui-support
+- Create UI from Java: https://www.curseforge.com/hytale/mods/hyui
+- Multiple HUDs: https://www.curseforge.com/hytale/mods/multiplehud
