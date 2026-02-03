@@ -1,9 +1,9 @@
 {
   "name": "hytale-modding",
   "description": "Hytale server plugin development skill with Java patterns, Custom UI, asset packs, weapons, and animations",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "author": {
-    "name": "zach"
+    "name": "ZacxDev"
   },
   "license": "MIT",
   "keywords": [
