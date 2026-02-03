@@ -618,6 +618,56 @@ IPrefabBuffer buffer = PrefabBufferUtil.getCached(path);
 buffer.release();
 ```
 
+## Player Data Persistence
+
+### Recommended: Component with CODEC
+
+For per-player data that persists across sessions, register a component with a CODEC:
+
+```java
+// 1. Define component with CODEC
+public class MyPlayerData implements Component<EntityStore> {
+    public static final BuilderCodec<MyPlayerData> CODEC = BuilderCodec
+        .builder(MyPlayerData.class, MyPlayerData::new)
+        .append(new KeyedCodec<>("Score", Codec.INTEGER),
+            (d, v) -> d.score = v, d -> d.score)
+        .add()
+        .build();
+
+    private int score = 0;
+
+    @Override
+    public Component<EntityStore> clone() {
+        MyPlayerData c = new MyPlayerData();
+        c.score = this.score;
+        return c;
+    }
+}
+
+// 2. Register in setup() with name + CODEC
+this.dataType = getEntityStoreRegistry().registerComponent(
+    MyPlayerData.class,
+    "MyPluginData",  // Key in player JSON
+    MyPlayerData.CODEC
+);
+
+// 3. Use - auto-saved on disconnect
+MyPlayerData data = store.ensureAndGetComponent(playerRef, dataType);
+data.setScore(100);
+```
+
+Data is stored in `server/Server/universe/players/{uuid}.json` under `Components.MyPluginData`.
+
+### Alternative: Plugin Data Directory
+
+For global data (leaderboards), use `getDataDirectory()`:
+
+```java
+Path dataDir = getDataDirectory();  // mods/PluginName/
+Path leaderboard = dataDir.resolve("leaderboard.json");
+BsonUtil.writeDocument(leaderboard, myCodec.encode(data, new ExtraInfo()));
+```
+
 ## Useful Resources
 
 - Visual UI Editor: https://hytale.ellie.au/

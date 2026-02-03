@@ -3353,3 +3353,94 @@ System providing efficient spatial queries for players.
 
 **Resource**: `PLAYER_SPATIAL_RESOURCE` - SpatialResource for player queries
 
+## com.hypixel.hytale.builtin.instances
+
+Instance system for isolated game worlds (minigames, dungeons, etc.).
+
+### InstancesPlugin
+
+**Type**: class (Plugin)
+
+**Access**: `InstancesPlugin.get()`
+
+**Key Methods**:
+- `spawnInstance(String name, World forWorld, Transform returnPoint)` → `CompletableFuture<World>` - Create new instance from template
+- `teleportPlayerToInstance(PlayerRef, ComponentAccessor, World targetWorld, Transform returnOverride)` - Move player to instance
+- `exitInstance(PlayerRef, ComponentAccessor)` - Return player to origin world
+
+**Usage**:
+```java
+// Create instance
+CompletableFuture<World> instance = InstancesPlugin.get()
+    .spawnInstance("MyMinigame", originWorld, returnTransform);
+
+// Cleanup: teleport all players out, instance auto-deletes if configured
+InstancesPlugin.exitInstance(playerRef, accessor);
+```
+
+### InstanceWorldConfig
+
+**Type**: class
+
+Configuration for instance world behavior.
+
+**Key Methods**:
+- `ensureAndGet(WorldConfig)` → `InstanceWorldConfig` - Get or create instance config
+- `setRemovalConditions(RemovalCondition[])` - Configure auto-removal triggers
+
+### RemovalCondition
+
+**Type**: interface
+
+Conditions that trigger instance world removal.
+
+**Implementations**:
+- `WorldEmptyCondition.INSTANCE` - Remove when all players leave
+- `TimeoutCondition` - Remove after fixed time
+- `IdleTimeoutCondition` - Remove after idle period
+
+**Usage**:
+```java
+InstanceWorldConfig config = InstanceWorldConfig.ensureAndGet(worldConfig);
+config.setRemovalConditions(new RemovalCondition[]{
+    WorldEmptyCondition.INSTANCE
+});
+worldConfig.setDeleteOnRemove(true);  // Delete files on removal
+```
+
+## com.hypixel.hytale.server.core.event.events.ecs
+
+### PrefabPlaceEntityEvent
+
+**Type**: class
+
+Event fired when an entity is spawned from a prefab. Use to track or modify spawned entities.
+
+**Key Methods**:
+- `getEntityRef()` → `Ref<EntityStore>` - Reference to spawned entity
+- `getHolder()` → `Holder<EntityStore>` - Entity holder (for modification)
+- `setCancelled(boolean)` - Cancel entity spawn
+
+**Usage**:
+```java
+entityStore.registerEventListener(PrefabPlaceEntityEvent.class, event -> {
+    // Track spawned entity
+    spawnedEntities.add(event.getEntityRef());
+
+    // Or conditionally cancel
+    if (shouldCancel) {
+        event.setCancelled(true);
+    }
+});
+```
+
+## com.hypixel.hytale.server.core.modules.entity.component
+
+### FromPrefab
+
+**Type**: class (Marker Component)
+
+Marker component added to entities spawned from prefabs. Automatically cleared after initialization by `ClearFromPrefabMarker` system.
+
+**Note**: Cannot be used for long-term tracking of prefab-sourced entities - add your own tracking component instead.
+

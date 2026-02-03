@@ -421,6 +421,8 @@ For fetching up-to-date documentation:
 | `com.hypixel.hytale.server.core.util` | PrefabUtil (paste/remove prefabs) |
 | `com.hypixel.hytale.math` | Box (AABB containment checks) |
 | `com.hypixel.hytale.server.core.modules.spatial` | SpatialResource, PlayerSpatialSystem |
+| `com.hypixel.hytale.builtin.instances` | InstancesPlugin, InstanceWorldConfig, RemovalCondition |
+| `com.hypixel.hytale.server.core.event.events.ecs` | PrefabPlaceEntityEvent (entity spawn interception) |
 
 ## Plugin Registries
 
@@ -523,6 +525,40 @@ HytaleServer.SCHEDULED_EXECUTOR.scheduleAtFixedRate(() -> {
 ```
 
 See [patterns.md](patterns.md) for full implementation examples.
+
+## Instance System (Minigames)
+
+For isolated game worlds (minigames, dungeons), use the Instance system:
+
+```java
+// Create instance from template
+CompletableFuture<World> instance = InstancesPlugin.get()
+    .spawnInstance("MyMinigame", originWorld, returnTransform);
+
+// Configure auto-cleanup when empty
+instance.thenAccept(world -> {
+    world.getWorldConfig().setDeleteOnRemove(true);
+    InstanceWorldConfig.ensureAndGet(world.getWorldConfig())
+        .setRemovalConditions(new RemovalCondition[]{ WorldEmptyCondition.INSTANCE });
+});
+
+// Return player to origin world
+InstancesPlugin.exitInstance(playerRef, accessor);
+```
+
+## Player Data Persistence
+
+Register a component with CODEC for auto-persistence to player JSON:
+
+```java
+// In setup()
+this.dataType = getEntityStoreRegistry().registerComponent(
+    MyData.class, "MyPluginData", MyData.CODEC);
+
+// Usage - auto-saved on disconnect
+MyData data = store.ensureAndGetComponent(playerRef, dataType);
+data.setValue(100);
+```
 
 ## Reference
 

@@ -15,7 +15,7 @@ A Claude Code skill providing prime context for Hytale server plugin development
 
 ```bash
 # Add the marketplace
-/plugin marketplace add zach/claude-hytale-mod
+/plugin marketplace add ZacxDev/claude-hytale-mod
 
 # Install the plugin
 /plugin install hytale-modding@hytale-modding-marketplace
@@ -27,6 +27,12 @@ After installation, the skill activates automatically when working on Hytale mod
 
 ```bash
 /hytale-modding:hytale-mod create a command that gives items to players
+```
+
+You can also invoke the skill with arguments:
+
+```bash
+/hytale-modding:hytale-mod implement player teleportation command
 ```
 
 ## What's Included

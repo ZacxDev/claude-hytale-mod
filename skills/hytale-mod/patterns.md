@@ -199,6 +199,193 @@ public class RegionDetectionSystem implements TickingSystem<EntityStore> {
 - Polling runs on executor thread - wrap world modifications in `world.execute()`
 - ECS ticking runs on world thread - safe for direct modifications
 
+## Instance System for Minigames
+
+Hytale has a built-in **InstancesPlugin** for isolated game instances. Use this for minigames instead of modifying the main world.
+
+### Creating an Instance
+
+```java
+// Create instance from template (Server/Instances/YourGame/)
+CompletableFuture<World> gameWorld = InstancesPlugin.get()
+    .spawnInstance("YourMinigame", originWorld, returnTransform);
+
+// Configure auto-cleanup
+gameWorld.thenAccept(world -> {
+    WorldConfig config = world.getWorldConfig();
+    config.setDeleteOnRemove(true);  // Delete files when removed
+
+    InstanceWorldConfig instanceConfig = InstanceWorldConfig.ensureAndGet(config);
+    instanceConfig.setRemovalConditions(new RemovalCondition[]{
+        WorldEmptyCondition.INSTANCE  // Remove when all players leave
+    });
+});
+```
+
+### Removal Conditions
+
+| Condition | Behavior |
+|-----------|----------|
+| `WorldEmptyCondition` | Remove when all players leave (with timeout) |
+| `TimeoutCondition` | Remove after fixed time |
+| `IdleTimeoutCondition` | Remove after idle period |
+
+### Player Management
+
+```java
+// Teleport player to instance
+InstancesPlugin.teleportPlayerToInstance(playerRef, accessor, targetWorld, returnOverride);
+
+// Return player to origin world
+InstancesPlugin.exitInstance(playerRef, accessor);
+```
+
+### Advantages Over In-World Segments
+
+- Complete isolation (no terrain restoration needed)
+- Built-in player return mechanics
+- Automatic cleanup when empty
+- Fresh state every session
+
+## Entity Spawning in Prefabs
+
+### Enabling Entity Spawning
+
+Use the full `paste()` signature with `loadEntities: true`:
+
+```java
+PrefabUtil.paste(
+    buffer,
+    world,
+    position,
+    Rotation.None,
+    true,   // force
+    new FastRandom(),
+    0,      // setBlockSettings
+    false,  // technicalPaste
+    false,  // pasteAnchorAsBlock
+    true,   // loadEntities - CRITICAL for mobs
+    world.getEntityStore().getComponentAccessor()
+);
+```
+
+**Note**: Simple `paste()` overloads default to `loadEntities: false`.
+
+### Tracking Spawned Entities
+
+Entities are NOT auto-cleaned when prefabs are removed. Track them manually:
+
+```java
+public class EntityTracker {
+    private final List<Ref<EntityStore>> spawnedEntities = new ArrayList<>();
+
+    // Register listener in setup()
+    public void setup(EntityStore entityStore) {
+        entityStore.registerEventListener(PrefabPlaceEntityEvent.class, event -> {
+            spawnedEntities.add(event.getEntityRef());
+        });
+    }
+
+    // Cleanup all tracked entities
+    public void cleanup(World world) {
+        world.execute(() -> {
+            Store<EntityStore> store = world.getEntityStore().getStore();
+            for (Ref<EntityStore> ref : spawnedEntities) {
+                if (ref.validate()) {
+                    store.removeEntity(ref, RemoveReason.REMOVE);
+                }
+            }
+            spawnedEntities.clear();
+        });
+    }
+}
+```
+
+### Conditional Entity Spawning
+
+Intercept `PrefabPlaceEntityEvent` to modify or cancel spawns:
+
+```java
+entityStore.registerEventListener(PrefabPlaceEntityEvent.class, event -> {
+    if (gameDifficulty < 5) {
+        event.setCancelled(true);  // Don't spawn this entity
+    }
+});
+```
+
+## Player Data Persistence
+
+### Component with CODEC (Auto-Persisted)
+
+Register a component with a CODEC for automatic persistence to player JSON:
+
+```java
+public class PlayerGameData implements Component<EntityStore> {
+
+    public static final BuilderCodec<PlayerGameData> CODEC = BuilderCodec
+        .builder(PlayerGameData.class, PlayerGameData::new)
+        .append(new KeyedCodec<>("HighScore", Codec.INTEGER),
+            (d, v) -> d.highScore = v, d -> d.highScore)
+        .add()
+        .append(new KeyedCodec<>("TotalPlays", Codec.INTEGER),
+            (d, v) -> d.totalPlays = v, d -> d.totalPlays)
+        .add()
+        .append(new KeyedCodec<>("Unlocks", Codec.STRING_ARRAY),
+            (d, v) -> { if (v != null) Collections.addAll(d.unlocks, v); },
+            d -> d.unlocks.toArray(String[]::new))
+        .add()
+        .build();
+
+    private int highScore = 0;
+    private int totalPlays = 0;
+    private final Set<String> unlocks = new HashSet<>();
+
+    @Override
+    public Component<EntityStore> clone() {
+        PlayerGameData c = new PlayerGameData();
+        c.highScore = this.highScore;
+        c.totalPlays = this.totalPlays;
+        c.unlocks.addAll(this.unlocks);
+        return c;
+    }
+
+    // Getters/setters...
+}
+```
+
+### Registration
+
+```java
+@Override
+protected void setup() {
+    // Register with name + CODEC = auto-persisted
+    this.gameDataType = getEntityStoreRegistry().registerComponent(
+        PlayerGameData.class,
+        "MyPluginData",  // Key in player JSON
+        PlayerGameData.CODEC
+    );
+}
+```
+
+### Usage
+
+```java
+// Get or create (creates if not exists)
+PlayerGameData data = store.ensureAndGetComponent(playerRef, gameDataType);
+
+// Modify - auto-saved on player disconnect or world save
+data.setHighScore(Math.max(data.getHighScore(), newScore));
+data.incrementTotalPlays();
+```
+
+### Storage Approaches Summary
+
+| Approach | Persistence | Location | Use Case |
+|----------|-------------|----------|----------|
+| Component + CODEC | Automatic | `players/{uuid}.json` | Per-player progression |
+| `getDataDirectory()` | Manual | `mods/PluginName/` | Global leaderboards |
+| Component (no CODEC) | None | Memory | Session-only state |
+
 ## Command Arguments
 
 ```java
