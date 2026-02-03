@@ -199,6 +199,55 @@ getEventRegistry().registerGlobal(PlayerChatEvent.class, event -> {
 
 ## Custom UI Pattern
 
+### CustomUIHud (Gameplay Overlay)
+HUD elements persist during gameplay. File must be at `resources/Common/UI/Custom/`.
+
+```java
+import com.hypixel.hytale.server.core.entity.entities.player.hud.CustomUIHud;
+import com.hypixel.hytale.server.core.entity.entities.player.hud.HudManager;
+import com.hypixel.hytale.server.core.ui.builder.UICommandBuilder;
+import com.hypixel.hytale.server.core.universe.PlayerRef;
+
+public class ScoreHud extends CustomUIHud {
+    private int score = 0;
+
+    public ScoreHud(PlayerRef playerRef) {
+        super(playerRef);
+    }
+
+    @Override
+    protected void build(UICommandBuilder ui) {
+        ui.append("ScoreHud.ui");  // Common/UI/Custom/ScoreHud.ui
+        ui.set("#ScoreValue.Text", String.valueOf(score));
+    }
+
+    public void updateScore(int newScore) {
+        if (newScore == this.score) return;
+        this.score = newScore;
+        UICommandBuilder ui = new UICommandBuilder();
+        ui.set("#ScoreValue.Text", String.valueOf(score));
+        update(false, ui);  // false = incremental update
+    }
+}
+
+// Show: hudManager.setCustomHud(playerRef, new ScoreHud(playerRef));
+// Hide: hudManager.setCustomHud(playerRef, null);
+```
+
+**ScoreHud.ui:**
+```
+Group {
+  Group #ScorePanel {
+    Anchor: (Top: 20, Right: 20, Width: 200, Height: 50);
+
+    Label #ScoreValue {
+      Style: (FontSize: 32);
+      Text: "0";
+    }
+  }
+}
+```
+
 ### InteractiveCustomUIPage (with input)
 ```java
 import com.hypixel.hytale.codec.Codec;
@@ -268,28 +317,21 @@ public class MyPage extends InteractiveCustomUIPage<MyPage.EventData> {
 
 ### .ui File Format
 ```
-$Common = "Common.ui";
-@MyTex = PatchStyle(TexturePath: "MyBackground.png");
-
 Group {
   LayoutMode: Center;
 
   Group #Panel {
-    Background: @MyTex;
     Anchor: (Width: 400, Height: 300);
     LayoutMode: Top;
 
     Label #Title {
-      Style: (FontSize: 24, Alignment: Center);
+      Style: (FontSize: 24);
       Anchor: (Top: 20, Height: 40);
       Text: "Hello World";
     }
 
     TextField #NameInput {
-      Style: $Common.@DefaultInputFieldStyle;
-      Background: $Common.@InputBoxBackground;
       Anchor: (Top: 10, Width: 300, Height: 50);
-      Padding: (Full: 10);
     }
   }
 }
@@ -299,8 +341,15 @@ Group {
 - `$Variable = "file.ui"` — import another UI file
 - `@Variable = PatchStyle(...)` — define reusable texture
 - `#ElementId` — unique identifier for Java access
-- Element types: `Group`, `Label`, `TextField`
-- LayoutMode: `Center`, `Top`
+- Element types: `Group`, `Label`, `TextField`, `Button`
+
+**Valid LayoutMode values:** `Center`, `Top`, `Left` (NOT TopRight, BottomLeft, etc.)
+
+**Valid Anchor properties:** `Left`, `Right`, `Top`, `Bottom`, `Width`, `Height`, `Full`, `Horizontal`, `Vertical`, `MinWidth`, `MaxWidth`
+
+**Valid Style properties:** `FontSize` (integer), `Alignment` (`Center` only confirmed working)
+
+**Troubleshooting:** Enable **Diagnostic Mode** in Hytale client settings for detailed UI parsing errors.
 
 ## Item Definition (bundled in plugin)
 

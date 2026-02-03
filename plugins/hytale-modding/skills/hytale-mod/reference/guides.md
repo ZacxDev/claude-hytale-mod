@@ -411,19 +411,120 @@ world.execute(() -> {
 ### File Location
 `.ui` files must be in `resources/Common/UI/Custom/`
 
-### CustomUIHud
+**Manifest requirement**: `"IncludesAssetPack": true`
+
+### Troubleshooting Custom UI
+**CRITICAL**: Enable **Diagnostic Mode** in Hytale client settings (General tab) to see detailed UI parsing errors. Without this, you only get generic "Failed to load CustomUI documents" errors.
+
+### CustomUIHud (Gameplay Overlay)
+
+HUD elements persist during gameplay and cannot be interacted with.
+
 ```java
-public class MyHud extends CustomUIHud {
+import com.hypixel.hytale.server.core.entity.entities.player.hud.CustomUIHud;
+import com.hypixel.hytale.server.core.entity.entities.player.hud.HudManager;
+import com.hypixel.hytale.server.core.ui.builder.UICommandBuilder;
+import com.hypixel.hytale.server.core.universe.PlayerRef;
+
+public class ScoreHud extends CustomUIHud {
+    private int score = 0;
+
+    public ScoreHud(PlayerRef playerRef) {
+        super(playerRef);
+    }
+
     @Override
-    public void build(UICommandBuilder ui) {
-        ui.append("MyHud.ui");
+    protected void build(UICommandBuilder ui) {
+        ui.append("MyScoreHud.ui");  // File at Common/UI/Custom/MyScoreHud.ui
+        ui.set("#ScoreValue.Text", String.valueOf(score));
+    }
+
+    public void updateScore(int newScore) {
+        if (newScore == this.score) return;
+        this.score = newScore;
+        UICommandBuilder ui = new UICommandBuilder();
+        ui.set("#ScoreValue.Text", String.valueOf(score));
+        update(false, ui);  // false = don't clear existing UI
     }
 }
 
 // Show HUD
-player.getHudManager().setCustomHud(new MyHud());
-player.getHudManager().hideHudComponents();  // Hide default Hytale UI
+HudManager hudManager = player.getHudManager();
+hudManager.setCustomHud(playerRef, new ScoreHud(playerRef));
+
+// Remove HUD
+hudManager.setCustomHud(playerRef, null);
 ```
+
+### .ui File Format Reference
+
+#### Working Example (Minimal HUD)
+```
+Group {
+  Group #ScorePanel {
+    Anchor: (Top: 20, Right: 20, Width: 200, Height: 50);
+
+    Label #ScoreValue {
+      Style: (FontSize: 32);
+      Text: "0";
+    }
+  }
+}
+```
+
+#### Valid Anchor Properties
+All values are integers:
+| Property | Description |
+|----------|-------------|
+| `Left` | Distance from left edge |
+| `Right` | Distance from right edge |
+| `Top` | Distance from top edge |
+| `Bottom` | Distance from bottom edge |
+| `Width` | Element width |
+| `Height` | Element height |
+| `Full` | Full sizing value |
+| `Horizontal` | Horizontal positioning |
+| `Vertical` | Vertical positioning |
+| `MinWidth` | Minimum width constraint |
+| `MaxWidth` | Maximum width constraint |
+
+**INVALID**: `Fill`, `Center` (these don't exist)
+
+#### Valid LayoutMode Values
+| Value | Description |
+|-------|-------------|
+| `Center` | Center children |
+| `Top` | Stack from top |
+| `Left` | Stack from left |
+
+**INVALID**: `TopRight`, `BottomLeft`, `Right`, `Bottom` (these cause parsing errors)
+
+#### Valid Style Properties for Label
+```
+Style: (FontSize: 24);
+Style: (Alignment: Center);
+Style: (FontSize: 24, Alignment: Center);
+```
+
+**Valid Alignment values**: `Center` (others may not work)
+
+#### UI Element Types
+| Element | Purpose |
+|---------|---------|
+| `Group` | Container (like HTML div) |
+| `Label` | Text display |
+| `TextField` | User input field |
+| `Button` | Clickable button |
+
+#### Common UI Errors
+
+| Error | Cause | Fix |
+|-------|-------|-----|
+| `could not resolve expression for property LayoutMode` | Invalid LayoutMode value | Use `Center`, `Top`, or `Left` only |
+| `could not resolve expression for property Alignment` | Invalid Alignment value | Use `Center` only |
+| `could not find field X in type Anchor` | Invalid Anchor property | Check valid properties above |
+| `Could not find document XXXXX` | File path mismatch | Verify file exists at `Common/UI/Custom/filename.ui` |
+| `Failed to load CustomUI documents` | Generic parsing error | Enable Diagnostic Mode for details |
 
 ### InteractiveCustomUIPage
 ```java
