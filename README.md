@@ -35,6 +35,24 @@ You can also invoke the skill with arguments:
 /hytale-modding:hytale-mod implement player teleportation command
 ```
 
+## Repository Structure
+
+```
+claude-hytale-mod/
+├── .claude-plugin/
+│   └── marketplace.json          # Marketplace catalog
+├── plugins/
+│   └── hytale-modding/
+│       ├── .claude-plugin/
+│       │   └── plugin.json       # Plugin manifest
+│       └── skills/
+│           └── hytale-mod/
+│               ├── SKILL.md      # Main skill instructions
+│               ├── patterns.md   # Extended patterns
+│               └── reference/    # API documentation
+└── README.md
+```
+
 ## What's Included
 
 ### SKILL.md (Main)
