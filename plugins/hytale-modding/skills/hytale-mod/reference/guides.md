@@ -791,6 +791,90 @@ IndividualSpawnProvider provider = new IndividualSpawnProvider();
 provider.setSpawnPoint(playerUUID, transform);
 ```
 
+## Weather Configuration
+
+### Setting Weather in Instance Worlds
+
+Void instance worlds often have white/foggy visibility because no weather system is configured. Fix by adding `ForcedWeather` to `instance.bson`:
+
+```json
+{
+  "Version": 4,
+  "WorldGen": { "Type": "Void" },
+  "GameplayConfig": "Default",
+  "ForcedWeather": "Zone1_Sunny",
+  ...
+}
+```
+
+### Available Weather Types
+
+Weather assets follow the naming pattern `Zone{N}_{Type}`. Known working types:
+
+| Weather ID | Description |
+|------------|-------------|
+| `Zone1_Sunny` | Clear sky, minimal fog (default fallback) |
+| `Zone1_Overcast` | Cloudy but good visibility |
+| `Zone1_Rain` | Rain with particles |
+| `Zone1_Storm` | Heavy rain, reduced visibility |
+
+### Setting Weather Programmatically
+
+Use `WeatherResource.setForcedWeather()` or the WorldConfig:
+
+```java
+// Via WorldConfig (persisted)
+instanceWorld.getWorldConfig().setForcedWeather("Zone1_Sunny");
+instanceWorld.getWorldConfig().markChanged();
+
+// Via WeatherResource (runtime only)
+WeatherResource weather = store.getResource(WeatherResource.getResourceType());
+weather.setForcedWeather("Zone1_Sunny");
+```
+
+### Weather Asset Structure
+
+Weather assets define fog, sky colors, and atmospheric effects via time-based keyframes:
+
+```java
+// Key weather properties (from decompiled Weather.java)
+float[] fogDistance;          // [fogNear, fogFar] - default [-96, 1024]
+TimeFloat[] fogDensities;     // Fog density over time
+TimeColor[] fogColors;        // Fog color over time
+TimeColorAlpha[] skyTopColors;
+TimeColorAlpha[] skyBottomColors;
+FogOptions fogOptions;        // Extra fog control
+```
+
+### FogOptions Properties
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `ignoreFogLimits` | boolean | Bypass fog distance limits |
+| `effectiveViewDistanceMultiplier` | float | Multiply view distance |
+| `fogFarViewDistance` | float | Override far fog distance |
+| `fogHeightCameraOffset` | float | Vertical fog offset |
+| `fogHeightCameraOverriden` | boolean | Use fixed camera height for fog |
+| `fogHeightCameraFixed` | float | Fixed height value |
+
+### Using /weather Command
+
+Built-in weather commands (require WeatherPlugin):
+
+```
+/weather get                    # Show current weather
+/weather set <weather_id>       # Force specific weather
+/weather reset                  # Clear forced weather
+```
+
+### Common Weather Issues
+
+**White/cloudy visibility in void world**: Missing `ForcedWeather` in instance.bson. Add `"ForcedWeather": "Zone1_Sunny"`.
+
+**Weather not changing**: Weather is tied to biome/environment in normal worlds. Use `setForcedWeather()` to override.
+
+**Fog too dense**: Check `FogDistance` values. First value (fogNear) should be negative (e.g., -96), second (fogFar) should be large (e.g., 1024).
+
 ## Useful Resources
 
 - Visual UI Editor: https://hytale.ellie.au/
