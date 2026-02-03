@@ -205,21 +205,55 @@ Hytale has a built-in **InstancesPlugin** for isolated game instances. Use this 
 
 ### Creating an Instance
 
+**Critical**: `VoidWorldGenProvider` ignores the `SpawnProvider` in `instance.bson`. You MUST set the spawn provider explicitly on the WorldConfig.
+
 ```java
 // Create instance from template (Server/Instances/YourGame/)
-CompletableFuture<World> gameWorld = InstancesPlugin.get()
-    .spawnInstance("YourMinigame", originWorld, returnTransform);
+InstancesPlugin.get()
+    .spawnInstance("YourMinigame", originWorld, returnTransform)
+    .thenCompose(world -> {
+        // CRITICAL: Set spawn provider explicitly (VoidWorldGen ignores instance.bson)
+        world.getWorldConfig().setSpawnProvider(
+            new GlobalSpawnProvider(new Transform(
+                new Vector3d(0.0, 3.0, 0.0),  // Spawn position
+                new Vector3f(0.0f, 180.0f, 0.0f)  // Facing direction
+            ))
+        );
 
-// Configure auto-cleanup
-gameWorld.thenAccept(world -> {
-    WorldConfig config = world.getWorldConfig();
-    config.setDeleteOnRemove(true);  // Delete files when removed
+        // Configure auto-cleanup
+        WorldConfig config = world.getWorldConfig();
+        config.setDeleteOnRemove(true);
 
-    InstanceWorldConfig instanceConfig = InstanceWorldConfig.ensureAndGet(config);
-    instanceConfig.setRemovalConditions(new RemovalCondition[]{
-        WorldEmptyCondition.INSTANCE  // Remove when all players leave
+        InstanceWorldConfig instanceConfig = InstanceWorldConfig.ensureAndGet(config);
+        instanceConfig.setRemovalConditions(new RemovalCondition[]{
+            WorldEmptyCondition.INSTANCE
+        });
+
+        // Initialize on world thread, then continue
+        CompletableFuture<World> initFuture = new CompletableFuture<>();
+        world.execute(() -> {
+            // Place blocks, spawn entities here (synchronously)
+            initFuture.complete(world);
+        });
+        return initFuture;
+    })
+    .thenApply(world -> {
+        // AFTER initialization, teleport player
+        teleportPlayerToWorld(playerRef, world);
+        return world;
     });
-});
+```
+
+### Y Coordinate Constraints
+
+**Critical**: Valid Y range is **0-320**. Blocks at negative Y are silently ignored.
+
+```java
+// BAD - silently fails
+world.setBlock(x, -3, z, blockType);  // Does nothing!
+
+// GOOD - valid range
+world.setBlock(x, 0, z, blockType);   // Works
 ```
 
 ### Removal Conditions

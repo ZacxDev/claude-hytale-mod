@@ -668,6 +668,129 @@ Path leaderboard = dataDir.resolve("leaderboard.json");
 BsonUtil.writeDocument(leaderboard, myCodec.encode(data, new ExtraInfo()));
 ```
 
+## Instance Worlds & Spawn Configuration
+
+### Spawn Provider Gotcha
+
+**Critical**: The `SpawnProvider` in `instance.bson` is often ignored by `VoidWorldGenProvider`, which defaults spawn to Y=1. You MUST set the spawn provider explicitly on the `WorldConfig` after instance creation:
+
+```java
+InstancesPlugin.get().spawnInstance("MyInstance", originWorld, returnTransform)
+    .thenCompose(instanceWorld -> {
+        // REQUIRED: Set spawn provider explicitly
+        instanceWorld.getWorldConfig().setSpawnProvider(
+            new GlobalSpawnProvider(new Transform(
+                new Vector3d(0.0, 3.0, 0.0),  // Spawn position
+                new Vector3f(0.0f, 180.0f, 0.0f)  // Facing direction
+            ))
+        );
+
+        // Configure auto-cleanup
+        InstanceWorldConfig config = InstanceWorldConfig.ensureAndGet(
+            instanceWorld.getWorldConfig()
+        );
+        config.setRemovalConditions(new RemovalCondition[]{
+            WorldEmptyCondition.INSTANCE
+        });
+
+        // ... initialization code
+    });
+```
+
+### Y Coordinate Constraints
+
+**Critical**: Hytale valid Y range is **0-320**. Blocks placed at negative Y coordinates are **silently ignored** - no error, just no block.
+
+```java
+// BAD - blocks silently ignored
+world.setBlock(x, -3, z, blockTypeKey);  // Does nothing!
+
+// GOOD - valid Y range
+world.setBlock(x, 0, z, blockTypeKey);   // Works
+world.setBlock(x, 320, z, blockTypeKey); // Works
+```
+
+Always verify blocks are placed:
+```java
+int blockId = world.getBlock(x, y, z);
+if (blockId == 0) {
+    logger.atWarning().log("Block not placed at Y=%d (invalid range?)", y);
+}
+```
+
+### Instance World Initialization Timing
+
+Instance worlds may not tick until a player joins. The `world.execute()` method queues tasks that only process during the world's tick cycle.
+
+**Pattern**: Use `CompletableFuture` + `thenCompose` for proper sequencing:
+
+```java
+InstancesPlugin.get().spawnInstance(INSTANCE_NAME, originWorld, returnTransform)
+    .thenCompose(instanceWorld -> {
+        // Set spawn provider FIRST
+        instanceWorld.getWorldConfig().setSpawnProvider(
+            new GlobalSpawnProvider(SPAWN_TRANSFORM)
+        );
+
+        // Create session
+        GameSession session = new GameSession(playerUUID, instanceWorld);
+
+        // Initialize on world thread (blocks placed here)
+        CompletableFuture<GameSession> initFuture = new CompletableFuture<>();
+        instanceWorld.execute(() -> {
+            try {
+                session.initializeSync();  // Place blocks synchronously
+                initFuture.complete(session);
+            } catch (Exception e) {
+                initFuture.completeExceptionally(e);
+            }
+        });
+
+        return initFuture;
+    })
+    .thenApply(session -> {
+        // AFTER blocks are placed, teleport player
+        teleportPlayerToInstance(playerRef, originWorld, session.getInstanceWorld());
+        return session;
+    });
+```
+
+### Direct Block Placement in Instance Worlds
+
+For placing blocks directly (without prefabs), use `world.setBlock()` on the world thread:
+
+```java
+// Must be called from world.execute() callback
+private void placeStartPlatform(World world) {
+    String blockTypeKey = "Rock_Basalt";
+
+    for (int x = -5; x <= 5; x++) {
+        for (int z = -5; z <= 5; z++) {
+            for (int y = 0; y < 3; y++) {  // Y=0,1,2 (valid range)
+                world.setBlock(x, y, z, blockTypeKey);
+            }
+        }
+    }
+}
+```
+
+### GlobalSpawnProvider vs IndividualSpawnProvider
+
+| Provider | Use Case |
+|----------|----------|
+| `GlobalSpawnProvider` | All players spawn at same position (minigames, arenas) |
+| `IndividualSpawnProvider` | Per-player spawn points (survival, RPG) |
+| `FitToHeightMapSpawnProvider` | Spawn on terrain surface |
+
+```java
+// Global - fixed spawn point
+new GlobalSpawnProvider(new Transform(position, rotation));
+
+// Individual - different per player
+IndividualSpawnProvider provider = new IndividualSpawnProvider();
+provider.setSpawnPoint(playerUUID, transform);
+```
+
 ## Useful Resources
 
 - Visual UI Editor: https://hytale.ellie.au/

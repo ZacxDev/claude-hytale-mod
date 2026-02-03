@@ -2538,6 +2538,29 @@ Core APIs for plugin development.
 
 **Implements**: `ISpawnProvider`
 
+**Package**: `com.hypixel.hytale.server.core.universe.world.spawn`
+
+Provides a fixed spawn point for all players in a world. Essential for minigames and instance worlds.
+
+**Constructor**:
+- `GlobalSpawnProvider(Transform spawnPoint)` - Create with fixed spawn position and rotation
+
+**Key Methods**:
+- `getSpawnPoint()` → `Transform` - Get the configured spawn point
+- `setSpawnPoint(Transform)` - Update the spawn point
+
+**Critical Usage Note**:
+The `SpawnProvider` setting in `instance.bson` is often ignored by `VoidWorldGenProvider`. You MUST set the spawn provider explicitly on the `WorldConfig` after instance creation:
+
+```java
+instanceWorld.getWorldConfig().setSpawnProvider(
+    new GlobalSpawnProvider(new Transform(
+        new Vector3d(0.0, 3.0, 0.0),
+        new Vector3f(0.0f, 180.0f, 0.0f)
+    ))
+);
+```
+
 ### HalfByteSectionPalette
 
 **Type**: class
@@ -2912,6 +2935,25 @@ Core APIs for plugin development.
 
 **Implements**: `IWorldGenProvider`
 
+**Package**: `com.hypixel.hytale.server.core.universe`
+
+World generation provider that creates empty (void) worlds with no terrain. Used for instance worlds, minigames, and custom arenas.
+
+**Important Behavior**:
+- Default spawn position is approximately Y=1 (near world bottom)
+- **Does NOT honor `SpawnProvider` settings from `instance.bson`**
+- You MUST set the spawn provider explicitly via `WorldConfig.setSpawnProvider()` after world creation
+
+**Instance World Setup**:
+```java
+// After spawning instance with VoidWorldGen
+instanceWorld.getWorldConfig().setSpawnProvider(
+    new GlobalSpawnProvider(mySpawnTransform)
+);
+```
+
+**Y Coordinate Range**: Valid block placement range is Y=0 to Y=320. Blocks placed at negative Y values are **silently ignored**.
+
 ### World
 
 **Type**: class
@@ -2941,6 +2983,30 @@ Core APIs for plugin development.
 ### WorldConfig
 
 **Type**: class
+
+**Package**: `com.hypixel.hytale.server.core.universe.world`
+
+Configuration for a world instance, controlling spawn behavior, PvP settings, time, and more.
+
+**Access**: `world.getWorldConfig()` or `instanceWorld.getWorldConfig()`
+
+**Key Methods**:
+- `getSpawnProvider()` → `ISpawnProvider` - Get current spawn provider (may return default if not explicitly set)
+- `setSpawnProvider(ISpawnProvider)` - Set spawn provider (REQUIRED for instance worlds - see GlobalSpawnProvider)
+- `setDeleteOnRemove(boolean)` - Whether to delete world files when removed
+- `isPvpEnabled()` → `boolean` - Check if PvP is enabled
+- `setPvpEnabled(boolean)` - Enable/disable PvP
+- `isGameTimePaused()` → `boolean` - Check if game time is paused
+- `setGameTimePaused(boolean)` - Pause/unpause game time
+
+**Important**: For instance worlds, the spawn provider from `instance.bson` may not be honored. Always set explicitly:
+
+```java
+World instanceWorld = ...;
+instanceWorld.getWorldConfig().setSpawnProvider(
+    new GlobalSpawnProvider(spawnTransform)
+);
+```
 
 ### WorldConfigCommand
 
