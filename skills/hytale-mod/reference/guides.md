@@ -575,11 +575,47 @@ getCodecRegistry(Interaction.CODEC).register("my_interaction", MyInteraction.cla
 - Spawning entities
 - Playing sounds at positions
 - Teleporting players
+- Pasting/removing prefabs via `PrefabUtil`
 
 ```java
 world.execute(() -> {
     // Thread-safe operations here
 });
+```
+
+### Prefab Operations
+
+**ALWAYS** paste prefabs on the world thread:
+
+```java
+// From a scheduled task or event handler
+public void spawnSegment(World world, Vector3i position, IPrefabBuffer buffer) {
+    world.execute(() -> {
+        PrefabUtil.paste(
+            buffer,
+            world,
+            position,
+            Rotation.None,
+            true,  // loadEntities
+            new FastRandom(),
+            world.getEntityStore().getComponentAccessor()
+        );
+    });
+}
+```
+
+### Buffer Lifecycle
+
+`IPrefabBuffer` instances MUST be released to prevent memory leaks:
+
+```java
+// Load once, reuse many times
+IPrefabBuffer buffer = PrefabBufferUtil.getCached(path);
+
+// Use for multiple paste operations...
+
+// Release when completely done (e.g., plugin shutdown)
+buffer.release();
 ```
 
 ## Useful Resources

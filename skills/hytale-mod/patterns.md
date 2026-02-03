@@ -2,6 +2,203 @@
 
 Extended patterns and examples for Hytale plugin development.
 
+## Prefab Loading and Pasting
+
+### Loading Prefabs from Plugin Assets
+
+Plugins with `IncludesAssetPack: true` can bundle and load prefabs:
+
+```java
+public class PrefabManager {
+    private final Map<String, IPrefabBuffer> cache = new HashMap<>();
+
+    /**
+     * Load prefab from plugin's bundled assets.
+     * Path relative to Server/Prefabs/ directory.
+     */
+    public IPrefabBuffer loadPrefab(String prefabKey) {
+        Path path = PrefabStore.get().findAssetPrefabPath(prefabKey);
+        if (path == null) {
+            throw new IllegalArgumentException("Prefab not found: " + prefabKey);
+        }
+        IPrefabBuffer buffer = PrefabBufferUtil.getCached(path);
+        cache.put(prefabKey, buffer);
+        return buffer;
+    }
+
+    /**
+     * Get prefab dimensions.
+     */
+    public Vector3i getDimensions(IPrefabBuffer buffer) {
+        return new Vector3i(
+            buffer.getMaxX() - buffer.getMinX() + 1,
+            buffer.getMaxY() - buffer.getMinY() + 1,
+            buffer.getMaxZ() - buffer.getMinZ() + 1
+        );
+    }
+
+    /**
+     * Paste prefab at position (thread-safe).
+     */
+    public void pastePrefab(IPrefabBuffer buffer, World world, Vector3i position) {
+        world.execute(() -> {
+            PrefabUtil.paste(
+                buffer,
+                world,
+                position,
+                Rotation.None,
+                true,  // loadEntities
+                new FastRandom(),
+                world.getEntityStore().getComponentAccessor()
+            );
+        });
+    }
+
+    /**
+     * Release all cached buffers. Call on plugin shutdown.
+     */
+    public void shutdown() {
+        for (IPrefabBuffer buffer : cache.values()) {
+            buffer.release();
+        }
+        cache.clear();
+    }
+}
+```
+
+**Plugin Manifest** (required):
+```json
+{
+  "IncludesAssetPack": true
+}
+```
+
+**Directory Structure**:
+```
+plugin/src/main/resources/
+├── Server/Prefabs/
+│   └── MyPlugin/
+│       ├── Segment_A.prefab.json
+│       └── Segment_B.prefab.json
+└── manifest.json
+```
+
+### Chaining Prefabs
+
+Calculate next position based on direction:
+
+```java
+public Vector3i getNextPosition(Vector3i current, Vector3i dimensions, Direction dir) {
+    return switch (dir) {
+        case NORTH -> new Vector3i(current.x, current.y, current.z - dimensions.z);
+        case SOUTH -> new Vector3i(current.x, current.y, current.z + dimensions.z);
+        case EAST  -> new Vector3i(current.x + dimensions.x, current.y, current.z);
+        case WEST  -> new Vector3i(current.x - dimensions.x, current.y, current.z);
+        default    -> current;
+    };
+}
+```
+
+## Custom Region Entry Detection
+
+**No built-in event exists** for detecting when players enter custom regions. Use polling or ECS ticking.
+
+### Simple Polling Approach
+
+```java
+public class RegionManager {
+    private final Map<UUID, Box> regions = new ConcurrentHashMap<>();
+    private final Map<UUID, UUID> playerCurrentRegion = new ConcurrentHashMap<>();
+
+    public void startTracking() {
+        HytaleServer.SCHEDULED_EXECUTOR.scheduleAtFixedRate(() -> {
+            for (Player player : getOnlinePlayers()) {
+                checkPlayerRegion(player);
+            }
+        }, 0, 50, TimeUnit.MILLISECONDS);  // 20 checks per second
+    }
+
+    private void checkPlayerRegion(Player player) {
+        TransformComponent transform = player.getEntity().get(TransformComponent.class);
+        if (transform == null) return;
+
+        Vector3d pos = transform.getPosition();
+        UUID playerId = player.getUuid();
+
+        for (Map.Entry<UUID, Box> entry : regions.entrySet()) {
+            if (entry.getValue().containsPosition(Vector3d.ZERO, pos)) {
+                UUID currentRegion = playerCurrentRegion.get(playerId);
+                if (!entry.getKey().equals(currentRegion)) {
+                    playerCurrentRegion.put(playerId, entry.getKey());
+                    onPlayerEnteredRegion(player, entry.getKey());
+                }
+                return;
+            }
+        }
+        // Player not in any region
+        playerCurrentRegion.remove(playerId);
+    }
+
+    public void registerRegion(UUID id, Vector3i min, Vector3i max) {
+        regions.put(id, new Box(min.x, min.y, min.z, max.x, max.y, max.z));
+    }
+
+    protected void onPlayerEnteredRegion(Player player, UUID regionId) {
+        // Override to handle region entry
+    }
+}
+```
+
+### ECS Ticking System Approach (Advanced)
+
+For better integration with Hytale's ECS:
+
+```java
+public class RegionDetectionSystem implements TickingSystem<EntityStore> {
+    private final Map<UUID, Box> regions = new ConcurrentHashMap<>();
+    private final Map<UUID, UUID> lastRegion = new ConcurrentHashMap<>();
+
+    @Override
+    public void tick(Store<EntityStore> store, float deltaTime) {
+        store.forEach(Player.class, (ref, player) -> {
+            TransformComponent transform = store.getComponent(ref, TransformComponent.class);
+            if (transform == null) return;
+
+            Vector3d pos = transform.getPosition();
+            UUID playerId = player.getUuid();
+
+            for (Map.Entry<UUID, Box> entry : regions.entrySet()) {
+                if (entry.getValue().containsPosition(Vector3d.ZERO, pos)) {
+                    if (!entry.getKey().equals(lastRegion.get(playerId))) {
+                        lastRegion.put(playerId, entry.getKey());
+                        onRegionEnter(player, entry.getKey());
+                    }
+                    return;
+                }
+            }
+            lastRegion.remove(playerId);
+        });
+    }
+
+    protected void onRegionEnter(Player player, UUID regionId) {
+        // Handle region entry
+    }
+}
+```
+
+### Performance Considerations
+
+| Players | Regions | Approach |
+|---------|---------|----------|
+| < 10 | < 20 | Simple polling |
+| 10-50 | < 100 | ECS ticking |
+| > 50 | > 100 | Spatial partitioning (octree) |
+
+**Caveats**:
+- Fast-moving players could skip regions between checks
+- Polling runs on executor thread - wrap world modifications in `world.execute()`
+- ECS ticking runs on world thread - safe for direct modifications
+
 ## Command Arguments
 
 ```java

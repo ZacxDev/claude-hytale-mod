@@ -3218,3 +3218,138 @@ Core APIs for plugin development.
 
 **Implements**: `Codec<Value<T>>`
 
+## com.hypixel.hytale.server.core.prefab
+
+Prefab loading and management APIs for loading, pasting, and manipulating prefabs at runtime.
+
+### PrefabStore
+
+**Type**: class (Singleton)
+
+**Access**: `PrefabStore.get()`
+
+**Key Methods**:
+- `getAssetPrefabFromAnyPack(String key)` → `BlockSelection` - Load prefab from any registered asset pack (including plugins with `IncludesAssetPack: true`)
+- `findAssetPrefabPath(String key)` → `Path` - Get filesystem path to prefab file
+- `getPrefab(Path path)` → `BlockSelection` - Load prefab from specific path
+- `getAssetPrefabsPath()` → `Path` - Get base assets prefab directory
+
+**Usage**:
+```java
+// Load from plugin's bundled assets
+BlockSelection selection = PrefabStore.get().getAssetPrefabFromAnyPack("HytaleRun/Segment.prefab.json");
+```
+
+### PrefabBufferUtil
+
+**Type**: class
+
+**Package**: `com.hypixel.hytale.server.core.prefab.selection.buffer`
+
+**Key Methods**:
+- `getCached(Path path)` → `IPrefabBuffer` - Load prefab buffer with caching (efficient for repeated use)
+
+**Usage**:
+```java
+Path path = PrefabStore.get().findAssetPrefabPath("MyPrefab.prefab.json");
+IPrefabBuffer buffer = PrefabBufferUtil.getCached(path);
+// Use buffer...
+buffer.release();  // CRITICAL: Always release when done
+```
+
+### IPrefabBuffer
+
+**Type**: interface
+
+**Package**: `com.hypixel.hytale.server.core.prefab.selection.buffer.impl`
+
+**Key Methods**:
+- `getMinX()`, `getMaxX()` → `int` - X-axis bounds
+- `getMinY()`, `getMaxY()` → `int` - Y-axis bounds
+- `getMinZ()`, `getMaxZ()` → `int` - Z-axis bounds
+- `release()` - Free resources (MUST be called)
+
+**Dimension Calculation**:
+```java
+int width = buffer.getMaxX() - buffer.getMinX() + 1;
+int height = buffer.getMaxY() - buffer.getMinY() + 1;
+int depth = buffer.getMaxZ() - buffer.getMinZ() + 1;
+```
+
+### BlockSelection
+
+**Type**: class
+
+**Package**: `com.hypixel.hytale.server.core.prefab.selection.standard`
+
+High-level mutable prefab representation for building/editing. For runtime pasting, prefer `IPrefabBuffer`.
+
+## com.hypixel.hytale.server.core.util
+
+### PrefabUtil
+
+**Type**: class
+
+**Key Methods**:
+- `paste(IPrefabBuffer, World, Vector3i, Rotation, boolean loadEntities, FastRandom, ComponentAccessor)` - Paste prefab at position
+- `remove(IPrefabBuffer, World, Vector3i, boolean force, FastRandom, SetBlockSettings)` - Remove pasted prefab blocks
+
+**Usage**:
+```java
+PrefabUtil.paste(
+    buffer,
+    world,
+    new Vector3i(x, y, z),
+    Rotation.None,
+    true,  // loadEntities - spawn entities from prefab
+    new FastRandom(),
+    world.getEntityStore().getComponentAccessor()
+);
+```
+
+**Thread Safety**: Must be called on world thread. Use `world.execute(() -> { ... })` from other threads.
+
+## com.hypixel.hytale.math
+
+### Box
+
+**Type**: class
+
+Axis-aligned bounding box for spatial queries.
+
+**Constructor**: `Box(double minX, double minY, double minZ, double maxX, double maxY, double maxZ)`
+
+**Key Methods**:
+- `containsPosition(Vector3d origin, Vector3d point)` → `boolean` - Check if point is inside box relative to origin
+
+**Usage**:
+```java
+Box region = new Box(0, 0, 0, 100, 64, 100);
+Vector3d playerPos = transform.getPosition();
+if (region.containsPosition(Vector3d.ZERO, playerPos)) {
+    // Player is inside region
+}
+```
+
+## com.hypixel.hytale.server.core.modules.spatial
+
+### SpatialResource
+
+**Type**: class
+
+KD-tree spatial structure for efficient entity queries.
+
+**Access**: `store.getResource(PlayerSpatialSystem.PLAYER_SPATIAL_RESOURCE)`
+
+**Key Methods**:
+- `getSpatialStructure()` → KD-tree structure
+- `ordered(Vector3d position, double radius, List<Result> results)` - Query entities within radius
+
+### PlayerSpatialSystem
+
+**Type**: class
+
+System providing efficient spatial queries for players.
+
+**Resource**: `PLAYER_SPATIAL_RESOURCE` - SpatialResource for player queries
+

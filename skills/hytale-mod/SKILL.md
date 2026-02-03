@@ -417,6 +417,10 @@ For fetching up-to-date documentation:
 | `com.hypixel.hytale.codec.builder` | BuilderCodec |
 | `com.hypixel.hytale.server.core.interaction` | Interaction system |
 | `com.hypixel.hytale.protocol.packets.interface_` | CustomUIEventBindingType, CustomPageLifetime |
+| `com.hypixel.hytale.server.core.prefab` | PrefabStore, PrefabBufferUtil, IPrefabBuffer |
+| `com.hypixel.hytale.server.core.util` | PrefabUtil (paste/remove prefabs) |
+| `com.hypixel.hytale.math` | Box (AABB containment checks) |
+| `com.hypixel.hytale.server.core.modules.spatial` | SpatialResource, PlayerSpatialSystem |
 
 ## Plugin Registries
 
@@ -478,8 +482,50 @@ The decompiled source contains ~57 built-in plugins showing Hypixel's implementa
 | `ObjectivePlugin` | Quest objectives |
 | `FarmingPlugin` | Farming mechanics |
 
+## Prefab System
+
+### Loading Prefabs from Plugin Assets
+
+Plugins with `IncludesAssetPack: true` can bundle and load prefabs at runtime:
+
+```java
+// Load prefab from plugin's Server/Prefabs/ directory
+Path path = PrefabStore.get().findAssetPrefabPath("MyPlugin/Segment.prefab.json");
+IPrefabBuffer buffer = PrefabBufferUtil.getCached(path);
+
+// Get dimensions
+int width = buffer.getMaxX() - buffer.getMinX() + 1;
+int depth = buffer.getMaxZ() - buffer.getMinZ() + 1;
+
+// Paste on world thread
+world.execute(() -> {
+    PrefabUtil.paste(buffer, world, position, Rotation.None, true, new FastRandom(), accessor);
+});
+
+// CRITICAL: Release when done (e.g., plugin shutdown)
+buffer.release();
+```
+
+### Region Detection
+
+No built-in event exists for custom region entry. Use polling:
+
+```java
+HytaleServer.SCHEDULED_EXECUTOR.scheduleAtFixedRate(() -> {
+    for (Player player : players) {
+        Vector3d pos = player.getEntity().get(TransformComponent.class).getPosition();
+        Box region = new Box(minX, minY, minZ, maxX, maxY, maxZ);
+        if (region.containsPosition(Vector3d.ZERO, pos)) {
+            onPlayerInRegion(player);
+        }
+    }
+}, 0, 50, TimeUnit.MILLISECONDS);
+```
+
+See [patterns.md](patterns.md) for full implementation examples.
+
 ## Reference
 
-For extended patterns (ECS, animations, packet handling, interactions), see [patterns.md](patterns.md).
+For extended patterns (ECS, animations, packet handling, interactions, **prefabs**, **region detection**), see [patterns.md](patterns.md).
 
 For decompiled source navigation, see [reference/decompiled.md](reference/decompiled.md).
