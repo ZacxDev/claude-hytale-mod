@@ -426,6 +426,53 @@ Key weapon properties:
 - `Parent` — inherit from template (reduces duplication)
 - `Interactions` — Primary/Secondary/Ability attack chains
 
+## Item Catalog Reference
+
+This skill includes a complete dump of **3,021 vanilla items** from the Hytale server.
+
+### Using the Item Catalog
+
+**To find a specific item or category**, read [reference/ITEMS.md](reference/ITEMS.md):
+- Summary stats (259 weapons, 121 armor, 32 tools, 121 consumables)
+- Items grouped by category
+- Full table with ID, name, type, and model path
+
+**To look up item IDs quickly**, read [reference/items-compact.json](reference/items-compact.json):
+```json
+[
+  {"id": "Weapon_Longsword_Iron", "name": "server.items.Weapon_Longsword_Iron.name"},
+  {"id": "Armor_Helmet_Iron", "name": "server.items.Armor_Helmet_Iron.name"}
+]
+```
+
+**To find vanilla asset paths** (for Parent templates), read [reference/asset-paths.txt](reference/asset-paths.txt):
+```
+Icons/ItemsGenerated/Weapon_Longsword_Iron.png
+Items/Weapons/Longsword/Iron.blockymodel
+Items/Weapons/Longsword/Iron_Texture.png
+```
+
+### Common Item Templates (Parent values)
+
+| Template | Use For |
+|----------|---------|
+| `Template_Weapon_Sword` | Swords, longswords |
+| `Template_Weapon_Axe` | Axes |
+| `Template_Weapon_Spear` | Spears, polearms |
+| `Template_Weapon_Bow` | Bows |
+| `Template_Armor_Helmet` | Head armor |
+| `Template_Armor_Chestplate` | Chest armor |
+| `Template_Tool_Pickaxe` | Mining tools |
+| `Template_Tool_Shovel` | Digging tools |
+
+### Item Naming Conventions
+
+- **Weapons**: `Weapon_[Type]_[Material]` (e.g., `Weapon_Longsword_Iron`)
+- **Armor**: `Armor_[Slot]_[Material]` (e.g., `Armor_Helmet_Cobalt`)
+- **Tools**: `Tool_[Type]_[Material]` (e.g., `Tool_Pickaxe_Copper`)
+- **Consumables**: `Consumable_[Name]` (e.g., `Consumable_Potion_Health`)
+- **Ingredients**: `Ingredient_[Name]` (e.g., `Ingredient_Iron_Ingot`)
+
 ## Build & Deploy
 
 ```bash
@@ -498,6 +545,9 @@ This skill includes documentation extracted from the decompiled HytaleServer.jar
 | [reference/decompiled.md](reference/decompiled.md) | Navigation guide for decompiled source |
 | [reference/PACKAGES.md](reference/PACKAGES.md) | Key packages for plugin development |
 | [reference/API_REFERENCE.md](reference/API_REFERENCE.md) | Core plugin APIs |
+| [reference/ITEMS.md](reference/ITEMS.md) | **Complete item catalog (3,021 items)** - IDs, models, textures, categories |
+| [reference/items-compact.json](reference/items-compact.json) | Quick lookup: item IDs and names |
+| [reference/asset-paths.txt](reference/asset-paths.txt) | All vanilla texture/model asset paths |
 
 ### Quick Hierarchy Reference
 
