@@ -132,7 +132,13 @@ file texture.png  # Should show "8-bit/color RGBA"
 - Item models: `Common/Items/ItemName/ItemName.blockymodel`
 - Item textures: `Common/Items/ItemName/ItemName_Texture.png`
 - UI files: `Common/UI/Custom/`
+- Entity effects: `Server/Entity/Effects/`
 - **Mods folder**: `server/Server/mods/` (NOT `server/mods/`)
+
+### Pickup Interaction Bug
+The JSON-based `Pickup` interaction type has a **latent NPE bug**: `InteractionModule.getInteractionManagerComponent()` returns null because `EntityModule` constructs `PlayerItemEntityPickupSystem` before `InteractionModule.setup()` runs. No vanilla items use Pickup interactions, so this was never caught.
+
+**Workaround**: Use `LivingEntityInventoryChangeEvent` to detect items entering inventory, then apply effects programmatically. See [patterns.md](patterns.md#powerup-item-pattern-inventory-based) for the full pattern.
 
 ### Custom Items (CRITICAL)
 **Items REQUIRE an `Id` field** matching the filename:
@@ -515,6 +521,9 @@ For fetching up-to-date documentation:
 | `com.hypixel.hytale.protocol.packets.interface_` | CustomUIEventBindingType, CustomPageLifetime |
 | `com.hypixel.hytale.server.core.prefab` | PrefabStore, PrefabBufferUtil, IPrefabBuffer |
 | `com.hypixel.hytale.server.core.util` | PrefabUtil (paste/remove prefabs) |
+| `com.hypixel.hytale.server.core.asset.type.entityeffect.config` | EntityEffect |
+| `com.hypixel.hytale.server.core.entity.effect` | EffectControllerComponent |
+| `com.hypixel.hytale.server.core.inventory.transaction` | Transaction, ItemStackTransaction, ActionType |
 | `com.hypixel.hytale.math` | Box (AABB containment checks) |
 | `com.hypixel.hytale.server.core.modules.spatial` | SpatialResource, PlayerSpatialSystem |
 | `com.hypixel.hytale.builtin.instances` | InstancesPlugin, InstanceWorldConfig, RemovalCondition |
@@ -661,6 +670,6 @@ data.setValue(100);
 
 ## Reference
 
-For extended patterns (ECS, animations, packet handling, interactions, **prefabs**, **region detection**), see [patterns.md](patterns.md).
+For extended patterns (ECS, animations, packet handling, interactions, **prefabs**, **region detection**, **entity effects**), see [patterns.md](patterns.md).
 
 For decompiled source navigation, see [reference/decompiled.md](reference/decompiled.md).

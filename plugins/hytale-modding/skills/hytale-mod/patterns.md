@@ -567,6 +567,203 @@ public class MyInteraction extends SimpleInstantInteraction {
 getInteractionRegistry().register("my_interaction", MyInteraction.CODEC);
 ```
 
+## Custom Entity Effects
+
+Hytale supports custom entity effects that can be bundled in plugin asset packs and applied programmatically.
+
+### Creating Custom Effects
+
+Place effect JSON files under `Server/Entity/Effects/` in the plugin's resource directory:
+
+```
+my-plugin/src/main/resources/
+└── Server/Entity/Effects/
+    └── MyCategory/
+        └── Powerup_Speed.json    # ID becomes "Powerup_Speed"
+```
+
+The plugin's `manifest.json` must include `"IncludesAssetPack": true`.
+
+### Effect JSON Structure
+
+```json
+{
+    "Duration": 30,
+    "ApplicationEffects": {
+        "HorizontalSpeedMultiplier": 1.5,
+        "EntityBottomTint": "#00aaff",
+        "EntityTopTint": "#00ccff"
+    },
+    "OverlapBehavior": "Overwrite",
+    "StatusEffectIcon": "Icons/ItemsGenerated/My_Icon.png"
+}
+```
+
+### Effect Fields Reference
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `Duration` | float | Effect duration in seconds |
+| `Infinite` | bool | If true, effect never expires |
+| `Debuff` | bool | Whether this counts as a debuff |
+| `OverlapBehavior` | string | `Overwrite`, `Extend`, or `Ignore` when reapplied |
+| `StatusEffectIcon` | string | Path to HUD status icon (relative to `Common/`) |
+| `Invulnerable` | bool | Makes entity invulnerable while active |
+| `ApplicationEffects` | object | Visual/mechanical effects (see below) |
+| `StatModifiers` | object | Stat name → regen rate per tick (percent-based) |
+| `RawStatModifiers` | object | Stat name → array of modifier objects |
+| `DamageCalculatorCooldown` | float | Seconds between damage ticks |
+| `DamageCalculator` | object | `BaseDamage` → damage type → amount |
+| `DamageResistance` | object | Damage type → array of resistance modifiers |
+
+### ApplicationEffects Fields
+
+| Field | Example | Description |
+|-------|---------|-------------|
+| `HorizontalSpeedMultiplier` | `1.5` | Multiplies movement speed (0.5 = half, 1.5 = 50% faster) |
+| `EntityBottomTint` | `"#00aaff"` | Color tint on entity bottom |
+| `EntityTopTint` | `"#00ccff"` | Color tint on entity top |
+| `ScreenEffect` | `"ScreenEffects/Fire.png"` | Full-screen overlay effect |
+| `ModelVFXId` | `"Burn"` | Model visual effect ID |
+| `Particles` | array | Particle system attachments |
+| `WorldSoundEventId` | `"SFX_Effect_Burn_World"` | Looping world sound |
+| `LocalSoundEventId` | `"SFX_Effect_Burn_Local"` | Looping local sound |
+
+### RawStatModifiers (for buffs)
+
+For direct stat manipulation (used by food/potion buffs):
+
+```json
+{
+    "RawStatModifiers": {
+        "Health": [
+            {
+                "Amount": 1.25,
+                "CalculationType": "Multiplicative",
+                "Target": "Max"
+            }
+        ]
+    }
+}
+```
+
+- `CalculationType`: `Additive` (flat bonus) or `Multiplicative` (percentage)
+- `Target`: `Max` (modifies maximum value)
+
+### Applying Effects from Java
+
+```java
+import com.hypixel.hytale.server.core.asset.type.entityeffect.config.EntityEffect;
+import com.hypixel.hytale.server.core.entity.effect.EffectControllerComponent;
+import com.hypixel.hytale.server.core.entity.entities.Player;
+import com.hypixel.hytale.component.Ref;
+import com.hypixel.hytale.component.Store;
+import com.hypixel.hytale.server.core.universe.world.storage.EntityStore;
+
+// Look up effect from global asset map (works for vanilla + custom effects)
+EntityEffect entityEffect = EntityEffect.getAssetMap().getAsset("Powerup_Speed");
+if (entityEffect == null) return;
+
+Ref<EntityStore> ref = player.getReference();
+Store<EntityStore> store = ref.getStore();
+
+EffectControllerComponent effectController =
+    store.getComponent(ref, EffectControllerComponent.getComponentType());
+if (effectController == null) return;
+
+effectController.addEffect(ref, entityEffect, store);
+```
+
+**Key API Details:**
+- **Effect lookup**: `EntityEffect.getAssetMap().getAsset(effectId)` — the `effectId` is the bare filename without extension (e.g., `Powerup_Speed`), no pack prefix
+- **Effect application**: `EffectControllerComponent.addEffect(Ref, EntityEffect, ComponentAccessor)` — the `Store` satisfies `ComponentAccessor`
+
+### Powerup Item Pattern (Inventory-Based)
+
+Use `LivingEntityInventoryChangeEvent` to detect items entering inventory, then apply effects:
+
+```java
+import com.hypixel.hytale.server.core.event.events.entity.LivingEntityInventoryChangeEvent;
+import com.hypixel.hytale.server.core.inventory.ItemStack;
+import com.hypixel.hytale.server.core.inventory.container.ItemContainer;
+import com.hypixel.hytale.server.core.inventory.transaction.ActionType;
+import com.hypixel.hytale.server.core.inventory.transaction.ItemStackTransaction;
+import com.hypixel.hytale.server.core.inventory.transaction.Transaction;
+
+// In setup():
+getEventRegistry().registerGlobal(
+    LivingEntityInventoryChangeEvent.class,
+    this::onInventoryChange
+);
+
+private void onInventoryChange(LivingEntityInventoryChangeEvent event) {
+    Transaction transaction = event.getTransaction();
+    if (!(transaction instanceof ItemStackTransaction ist)) return;
+
+    ActionType action = ist.getAction();
+    if (action == null || !action.isAdd()) return;
+
+    ItemStack query = ist.getQuery();
+    if (query == null || ItemStack.isEmpty(query)) return;
+
+    String itemId = query.getItemId();
+    // Match against your powerup item IDs...
+
+    if (!(event.getEntity() instanceof Player player)) return;
+
+    // Apply effect
+    EntityEffect entityEffect = EntityEffect.getAssetMap().getAsset("Powerup_Speed");
+    if (entityEffect == null) return;
+
+    Ref<EntityStore> ref = player.getReference();
+    Store<EntityStore> store = ref.getStore();
+    EffectControllerComponent effectController =
+        store.getComponent(ref, EffectControllerComponent.getComponentType());
+    if (effectController != null) {
+        effectController.addEffect(ref, entityEffect, store);
+    }
+
+    // Remove consumed item (deferred to avoid recursive inventory events)
+    var slotTxns = ist.getSlotTransactions();
+    if (!slotTxns.isEmpty()) {
+        short slot = slotTxns.get(0).getSlot();
+        ItemContainer container = event.getItemContainer();
+        player.getWorld().execute(() -> container.removeItemStackFromSlot(slot));
+    }
+}
+```
+
+**Critical Notes:**
+- `LivingEntityInventoryChangeEvent` is keyed by world name (`String`). Use `registerGlobal()` to listen across all worlds.
+- **Deferred removal**: Modifying inventory inside an inventory change event causes recursion. Use `world.execute()` to defer to the next tick.
+
+### Vanilla Effect Reference
+
+Effects found in `Assets.zip` under `Server/Entity/Effects/`:
+
+**Status Effects:**
+| ID | Duration | Description |
+|----|----------|-------------|
+| `Burn` | 3s | Fire damage, orange tint, debuff |
+| `Poison` | varies | Poison damage, green screen effect |
+| `Freeze` | varies | Freeze effect |
+| `Slow` | 10s | 0.5x speed, blue/purple tint |
+| `Stun` | varies | Stun effect |
+| `Root` | varies | Root/immobilize |
+| `Immune` | 20s | Invulnerability, green tint |
+| `Antidote` | varies | Clears debuffs |
+
+**Food/Potion Buffs:**
+| ID | Duration | Description |
+|----|----------|-------------|
+| `HealthRegen_Buff_T1/T2/T3` | 45s | Health regen via StatModifiers |
+| `Food_Health_Boost_Small/Medium/Large` | 480s | +10/+20/+30 max health |
+| `Food_Stamina_Regen_*` | varies | Stamina regeneration |
+| `Potion_Health_Lesser_Regen` | 5s | Health regen with particle effects |
+| `Meat_Buff_T1/T2/T3` | 360s | Health boost + damage resistance |
+
+**Note:** No vanilla speed *boost* effect exists — `HorizontalSpeedMultiplier` > 1 requires a custom effect.
+
 ## Packet Watching
 
 ```java

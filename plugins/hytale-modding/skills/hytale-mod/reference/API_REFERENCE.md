@@ -1714,6 +1714,58 @@ Core APIs for plugin development.
 
 **Implements**: `Component<EntityStore>`
 
+**Package**: `com.hypixel.hytale.server.core.entity.effect`
+
+Manages active entity effects on a living entity.
+
+**Access**: `store.getComponent(ref, EffectControllerComponent.getComponentType())`
+
+**Key Methods**:
+- `addEffect(Ref<EntityStore>, EntityEffect, ComponentAccessor)` - Apply an effect to the entity
+- `removeEffect(EntityEffect)` - Remove an active effect
+- `hasEffect(EntityEffect)` → `boolean` - Check if effect is active
+- `getActiveEffects()` → `Collection<ActiveEntityEffect>` - Get all active effects
+
+**Usage**:
+```java
+EffectControllerComponent effectController =
+    store.getComponent(ref, EffectControllerComponent.getComponentType());
+if (effectController != null) {
+    EntityEffect effect = EntityEffect.getAssetMap().getAsset("Powerup_Speed");
+    effectController.addEffect(ref, effect, store);
+}
+```
+
+## com.hypixel.hytale.server.core.asset.type.entityeffect.config
+
+### EntityEffect
+
+**Type**: class
+
+**Implements**: `JsonAssetWithMap`
+
+Configuration for entity effects loaded from `Server/Entity/Effects/` JSON files.
+
+**Access**: `EntityEffect.getAssetMap().getAsset(effectId)`
+
+**Key Methods**:
+- `getAssetMap()` → `AssetMap<String, EntityEffect>` - Get global effect registry
+- `getDuration()` → `float` - Effect duration in seconds
+- `isInfinite()` → `boolean` - Whether effect never expires
+- `isDebuff()` → `boolean` - Whether effect is a debuff
+- `getOverlapBehavior()` → `OverlapBehavior` - Behavior when reapplied
+
+**Effect Lookup**:
+```java
+// Effect ID is the filename without extension
+EntityEffect speedBoost = EntityEffect.getAssetMap().getAsset("Powerup_Speed");
+
+// Works for both vanilla and plugin-bundled effects
+EntityEffect burn = EntityEffect.getAssetMap().getAsset("Burn");
+```
+
+**Note**: The effect ID is the bare filename without extension or pack prefix. For a file at `Server/Entity/Effects/MyCategory/Speed_Boost.json`, the ID is `Speed_Boost`.
+
 ### Entity
 
 **Type**: class

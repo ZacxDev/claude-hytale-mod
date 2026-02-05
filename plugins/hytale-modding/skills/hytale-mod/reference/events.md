@@ -40,9 +40,44 @@ Standard synchronous events.
 | Event | Description |
 |-------|-------------|
 | `EntityRemoveEvent` | Entity removed |
-| `LivingEntityInventoryChangeEvent` | Inventory changed |
+| `LivingEntityInventoryChangeEvent` | Inventory changed (keyed by world name) |
 | `LoadedNPCEvent` | NPC loaded |
 | `AllNPCsLoadedEvent` | All NPCs loaded |
+
+#### LivingEntityInventoryChangeEvent Details
+
+Keyed event (`IEvent<String>`) — key is the world name. Use `registerGlobal()` to listen across all worlds.
+
+**Key Methods**:
+- `getEntity()` → `LivingEntity` - The entity whose inventory changed
+- `getTransaction()` → `Transaction` - The inventory transaction (cast to `ItemStackTransaction` for item operations)
+- `getItemContainer()` → `ItemContainer` - The container that changed
+
+**Transaction Analysis**:
+```java
+getEventRegistry().registerGlobal(LivingEntityInventoryChangeEvent.class, event -> {
+    Transaction transaction = event.getTransaction();
+    if (!(transaction instanceof ItemStackTransaction ist)) return;
+
+    ActionType action = ist.getAction();
+    if (action != null && action.isAdd()) {
+        // Item was added to inventory
+        ItemStack query = ist.getQuery();
+        String itemId = query.getItemId();
+    }
+
+    // Get slot info
+    var slotTxns = ist.getSlotTransactions();
+    if (!slotTxns.isEmpty()) {
+        short slot = slotTxns.get(0).getSlot();
+    }
+});
+```
+
+**Caution**: Modifying inventory inside this event causes recursion. Defer with `world.execute()`:
+```java
+player.getWorld().execute(() -> container.removeItemStackFromSlot(slot));
+```
 
 ### Chunk Events
 | Event | Description |
