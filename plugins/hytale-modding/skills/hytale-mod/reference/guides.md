@@ -976,6 +976,116 @@ Built-in weather commands (require WeatherPlugin):
 
 **Fog too dense**: Check `FogDistance` values. First value (fogNear) should be negative (e.g., -96), second (fogFar) should be large (e.g., 1024).
 
+## Live UI Plugin (World-Scoped Shared HUD)
+
+Hytale only supports **ONE custom HUD per player**. The Live UI plugin provides a shared panel that aggregates data from multiple plugins without conflicts.
+
+**CRITICAL**: Live UI entries are **WORLD-SCOPED**. Each (player, world) pair has independent UI state. Register entries AFTER the player arrives in the target world, not before teleportation.
+
+### Add Plugin Dependency
+
+```json
+{
+  "Dependencies": {
+    "dev.zacx.liveui:LiveUI": "*"
+  }
+}
+```
+
+### Register Entries (World-Scoped)
+
+```java
+// Must be called AFTER player arrives in target world
+World world = session.getInstanceWorld();
+UUID playerUUID = playerRef.getUuid();
+
+LiveUIPlugin.get().getManager()
+    .forPlayer(playerUUID, world)  // <-- World is REQUIRED
+    .entry("myplugin:score")
+    .label("SCORE")
+    .value("0")
+    .priority(10)  // Lower = higher on screen
+    .register();
+
+// Optional: icon and styling
+LiveUIPlugin.get().getManager()
+    .forPlayer(playerUUID, world)
+    .entry("myplugin:coins")
+    .label("COINS")
+    .value("**1,234**")  // Bold via markdown
+    .icon("Icons/ItemsGenerated/Currency_Emerald.png")
+    .style(new EntryStyle("#a0a0a0", "#ffff00", 24))
+    .priority(20)
+    .register();
+
+// Show the HUD (requires full context for world thread safety)
+LiveUIPlugin.get().getManager().show(playerUUID, world, playerRef, store, entityRef);
+```
+
+### Update Values (Efficient)
+
+```java
+// Single world update
+LiveUIPlugin.get().getManager()
+    .updateValue(playerUUID, world, "myplugin:score", "123");
+
+// Update in ALL worlds (for persistent values like currency)
+LiveUIPlugin.get().getManager()
+    .updateValueAllWorlds(playerUUID, "myplugin:coins", "5,678");
+```
+
+Updates are batched at 50ms intervals - multiple calls within the window are coalesced.
+
+### Cleanup
+
+```java
+// On game end - unregister from specific world
+LiveUIPlugin.get().getManager()
+    .unregisterAll(playerUUID, world.getName(), "myplugin");
+
+// Or in plugin shutdown() - remove from all worlds
+@Override
+protected void shutdown() {
+    LiveUIPlugin.get().getManager().unregisterAllGlobal("myplugin");
+}
+```
+
+**Note**: Cleanup is often automatic - entries are removed when player leaves world or world is unloaded.
+
+### Why World-Scoped?
+
+Previous player-scoped design caused crashes during world teleportation:
+- HUD was attached to player entity in origin world
+- When player teleported, HUD referenced stale world context
+- Client crashed with "Object reference not set to an instance of an object"
+
+World-scoped design ensures:
+- HUD only exists in the world where it was registered
+- No stale references across world boundaries
+- Automatic cleanup on world exit/unload
+
+### Markdown Support in Values
+
+| Syntax | Result |
+|--------|--------|
+| `**bold**` | Bold text |
+| `*italic*` | Italic text |
+| `{#ff0000}text{/}` | Colored text |
+
+Examples:
+- `"**123**m"` → bold "123" followed by "m"
+- `"{#00ff00}+5{/} coins"` → green "+5" followed by " coins"
+
+### Common Gotchas
+
+- **World is required** - all API calls require a World reference
+- Register entries AFTER player arrives in target world, not before teleport
+- Call `show()` after registering entries to display the HUD
+- Entry IDs must be unique per player per world (format: `"pluginid:entryname"`)
+- Icons must be relative to `Common/` (e.g., `"Icons/ItemsGenerated/Tool_Map.png"`)
+- Priority is inverted: lower number = higher on screen
+- UI files must be deployed to `server/Server/UI/Custom/` (not loaded from JAR)
+
 ## Useful Resources
 
 - Visual UI Editor: https://hytale.ellie.au/
